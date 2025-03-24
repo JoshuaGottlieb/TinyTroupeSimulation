@@ -175,3 +175,6 @@ cython_debug/
 
 # API Keys
 api_keys.py
+
+# TinyTroupe Config Files (contains API keys)
+config.ini
