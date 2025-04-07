@@ -4,7 +4,7 @@ import pandas as pd
 from pandas.api.types import is_numeric_dtype, is_object_dtype, is_bool_dtype
 from difflib import SequenceMatcher
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardStaler
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 
@@ -28,21 +28,42 @@ class DataFramePreprocessor:
         Raises:
             Prints an error message if the file cannot be loaded or if any step fails.
         """
-        try:        
-            self.df = pd.read_csv(csv_path)
-            self.helper = LlamaBot(role_context = """
+        self.csv_path = csv_path
+        self.helper = LlamaBot(role_context = """
             You are an AI assistant designed to help preprocess data.
             You do not provide explanations and only return answers in the requested format.
             """, temperature = 0.1)
+        self.load_dataframe()
+    
+    def load_dataframe(self) -> None:
+        """
+        Loads a CSV file into a DataFrame and performs initial preprocessing.
+    
+        This method reads a CSV file from the specified path, normalizes the column names 
+        to snake_case, and attempts to convert column types for better usability.
+        In case of any error during loading or preprocessing, it prints the error message.
+        """
+        try:
+            # Print and attempt to load the CSV file into a DataFrame
+            print(f"Loading data at {self.csv_path}")
+            self.df = pd.read_csv(self.csv_path)
+    
+            # Normalize the column names (e.g., convert to lowercase, snake_case)
             print("Normalizing column names")
             self.normalize_column_names()
+    
+            # Convert column types using an LLM-assisted method
             print("Converting column types")
             self.convert_column_types()
+    
+            return
         except Exception as e:
-            print(f"Unable to load data at {csv_path}")
+            # Handle any exceptions during file loading or processing
+            print(f"Unable to load data at {self.csv_path}")
             print(e)
-            self.df = pd.DataFrame()
-
+    
+            return
+    
     def get_dataframe(self) -> pd.DataFrame:
         """
         Returns the internal pandas DataFrame.
@@ -396,20 +417,20 @@ class DataFramePreprocessor:
         If the task is classification, the target variable is label-encoded.
         """
         # Get the unique values in each column of the training dataset
-        unique_values = [(column, self.X_train[column].unique()) for column in self.X_train.columns]
+        unique_values = [(column, len(self.X_train[column].unique())) for column in self.X_train.columns]
     
         # Identify binary columns (those with only two unique values)
         # Identify categorical columns to apply one-hot encoding, combining with binary columns
         binary_columns = [column for column, num_values in unique_values if num_values == 2]
-        one_hot_columns = list(set(self.X_train.select_dtypes("object").columns + binary_columns))
+        one_hot_columns = list(set(self.X_train.select_dtypes("object").columns.tolist() + binary_columns))
     
         # Identify numerical columns that are not part of the one-hot encoded columns
-        numerical_columns = [column for column in self.X_train.select_dtypes("numeric") if column not in one_hot_columns]
+        numerical_columns = [column for column in self.X_train.select_dtypes("number") if column not in one_hot_columns]
     
         # Define preprocessing pipelines for categorical (one-hot encoding) and numerical (standard scaling) data
         # Drop the first column to avoid dummy variable trap
         # StandardScaler for feature scaling
-        one_hot_preprocessor = Pipeline(steps=[('ohe', OneHotEncoder(drop='first'))])
+        one_hot_preprocessor = Pipeline(steps=[('ohe', OneHotEncoder(drop = 'first'))])
         numerical_preprocessor = Pipeline(steps=[('ssc', StandardScaler())])
     
         # Combine both transformations using ColumnTransformer
