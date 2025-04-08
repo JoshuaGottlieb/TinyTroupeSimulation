@@ -15,7 +15,7 @@ class DataHolder():
         self.y_test = None
         self.preprocessor = None
         self.target_encoder = None
-        self.task_type = None
+        self.regression_flag = None
         self.hyperparameter_tuning = None
         self.extended_models = None
         self.cv = None
@@ -83,20 +83,20 @@ class DataHolder():
         encoders = {"preprocessor": self.preprocessor}
     
         # For classification tasks, include the label encoder as well
-        if not self.task_type:
+        if not self.regression_flag:
             encoders["target_encoder"] = self.target_encoder
     
         return encoders
 
-    def set_machine_learning_task(self, task_type: bool) -> None:
+    def set_machine_learning_task(self, regression_flag: bool) -> None:
         """
         Sets the machine learning task type.
     
         Args:
-            task_type (bool): Task type flag (0 for classification, 1 for regression).
+            regression_flag (bool): Whether the task is regression (1) or classification (0)
         """
         # Store the task type: 0 = classification, 1 = regression
-        self.task_type = task_type
+        self.regression_flag = regression_flag
     
         return
 

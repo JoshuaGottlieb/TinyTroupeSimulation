@@ -26,7 +26,7 @@ class AutomaticModeler:
             X_test (pd.DataFrame): Feature matrix for testing.
             y_train (pd.Series): Target vector for training.
             y_test (pd.Series): Target vector for testing.
-            task_type (bool): Task type flag — True for regression, False for classification.
+            regression_flag (bool): Task type flag — True for regression, False for classification.
             encoders (Dict[str, Any]): Dictionary of fitted data encoders used for preprocessing.
             hyperparameter_tuning (bool, optional): If True, enables hyperparameter tuning. Default is False.
             extended_models (bool, optional): If True, includes additional model types during evaluation. Default is False.
@@ -47,7 +47,7 @@ class AutomaticModeler:
         based on the task type (classification or regression).
         """
         self.models = []
-        if self.dataholder.task_type:
+        if self.dataholder.regression_flag:
             # Task is regression
             # Add base regression model
             self.models.append(Pipeline(steps = [("linear_regression", LinearRegression())]))
@@ -192,7 +192,7 @@ class AutomaticModeler:
         }
 
         # Use negative RSME scoring for regression, ROC AUC scoring for classification
-        scoring = "neg_root_mean_squared_error" if self.dataholder.task_type else "roc_auc"
+        scoring = "neg_root_mean_squared_error" if self.dataholder.regression_flag else "roc_auc"
         
         # Create the GridSearchCV object using the appropriate hyperparameters
         grid = GridSearchCV(
@@ -226,7 +226,7 @@ class AutomaticModeler:
         scoring = list(self.metrics.values())[0]
     
         # Set polarity: negative for regression (minimize), positive for classification (maximize)
-        polarity = -1 if self.dataholder.task_type else 1
+        polarity = -1 if self.dataholder.regression_flag else 1
     
         # Perform cross-validation over each fold
         for fold_index, val_index in kf.split(self.dataholder.X_train):
@@ -237,7 +237,7 @@ class AutomaticModeler:
             # Evaluate each model on the validation set
             for i, model in enumerate(self.models):
                 y_pred = model.predict(X_val)
-                if self.dataholder.task_type:
+                if self.dataholder.regression_flag:
                     score = scoring(y_val, y_pred)
                 else:
                     score = scoring(y_val, y_pred, average = "micro")
@@ -293,7 +293,7 @@ class AutomaticModeler:
     
         # Evaluate and store scores for each metric on both train and test sets
         for metric, scorer in self.metrics.items():
-            if self.dataholder.task_type: # Regression
+            if self.dataholder.regression_flag: # Regression
                 self.dataholder.scores["train"][metric] = scorer(
                     self.dataholder.y_train, self.dataholder.predictions["train"]
                 )

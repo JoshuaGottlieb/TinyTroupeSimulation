@@ -27,7 +27,7 @@ class ModelEvaluator():
             y_train (pd.Series): The target variable for training.
             y_test (pd.Series): The target variable for testing.
             model (Any): A scikit-learn pipeline or model with preprocessing and estimator steps.
-            task_type (bool): Type of task; 0 for classification, 1 for regression.
+            regression_flag (bool): Type of task; 0 for classification, 1 for regression.
             predictions (Dict[str, Dict[str, np.array]]): A dictionary to store predictions on train and test data.
             scores (Dict[str, Dict[str, np.array]]): A dictionary to store evaluation scores (e.g., accuracy, RMSE)
                     on train and test data.
@@ -220,5 +220,17 @@ class ModelEvaluator():
         judge_plot_explanation = self.judge.call_llama(prompt = prompt, save_history = False)
 
         display(Markdown(judge_plot_explanation))
+
+        return
+
+    # TODO
+    def evaluate_classification_model(self) -> None:
+        pass
+
+    def evaluate_model(self) -> None:
+        if self.dataholder.regression_flag:
+            self.evaluate_regression_model()
+        else:
+            self.evaluate_classification_model()
 
         return
