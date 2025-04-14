@@ -12,8 +12,12 @@ from sklearn.model_selection import GridSearchCV, KFold
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score, roc_auc_score
 from sklearn.metrics import r2_score, root_mean_squared_error
+from sklearn.exceptions import ConvergenceWarning
 from typing import Any, Dict
 from copy import deepcopy
+import warnings
+
+warnings.filterwarnings("ignore", category = ConvergenceWarning)
 
 class AutomaticModeler:
     def __init__(self, dataholder: DataHolder):
@@ -59,7 +63,7 @@ class AutomaticModeler:
     
             # Initialize regression metrics
             self.metrics = {
-                "rsme": root_mean_squared_error,
+                "rmse": root_mean_squared_error,
                 "r2_score": r2_score
             }
         else:
@@ -84,11 +88,11 @@ class AutomaticModeler:
     
             # Initialize classification metrics
             self.metrics = {
-                "roc_auc": roc_auc_score,
                 "accuracy": accuracy_score,
                 "recall": recall_score,
                 "precision": precision_score,
-                "f1_score": f1_score,
+                "f1_score": f1_score
+                # "roc_auc": roc_auc_score
             }
     
         return
@@ -186,20 +190,18 @@ class AutomaticModeler:
                 f"estimator__{name}__max_features": [None, "sqrt", "log2"]
             },
             "random_forest": {
-                f"estimator__{name}__max_depth": [None, 5, 10],
-                f"estimator__{name}__n_estimators": [100, 200, 400]
+                f"estimator__{name}__max_depth": [None, 5, 10]
             }
         }
 
         # Use negative RSME scoring for regression, ROC AUC scoring for classification
-        scoring = "neg_root_mean_squared_error" if self.dataholder.regression_flag else "roc_auc"
+        scoring = "neg_root_mean_squared_error" if self.dataholder.regression_flag else "accuracy"
         
         # Create the GridSearchCV object using the appropriate hyperparameters
         grid = GridSearchCV(
             estimator = pipeline,
             param_grid = hyperparameters[name],
             cv = self.dataholder.cv,
-            n_jobs = -1,
             scoring = scoring
         )
     
@@ -240,7 +242,7 @@ class AutomaticModeler:
                 if self.dataholder.regression_flag:
                     score = scoring(y_val, y_pred)
                 else:
-                    score = scoring(y_val, y_pred, average = "micro")
+                    score = scoring(y_val, y_pred)
     
                 # Store polarity-adjusted score
                 results[f"model_{i + 1}"].append(polarity * score)
@@ -252,8 +254,8 @@ class AutomaticModeler:
         best_model_idx = np.argmax(average_scores)
     
         return best_model_idx
-    
-    def fit_and_score_model(self) -> None:
+
+    def fit_and_score_model(self) -> bool:
         """
         Trains, tunes, and evaluates machine learning models using training and test data.
     
@@ -265,47 +267,57 @@ class AutomaticModeler:
         Each set of predictions is then scored using the predefined metrics (e.g., accuracy, RMSE),
         and the results are stored in the `self.dataholder.scores` dictionary.
         """
-        for i, model in enumerate(self.models):
-            # Create a pipeline that includes preprocessing and the model
-            pipeline = self.build_pipeline(model)
-    
-            if self.dataholder.hyperparameter_tuning:
-                # If tuning is enabled, perform grid search with cross-validation
-                grid = self.get_gridsearch(pipeline)
-                grid.fit(self.dataholder.X_train, self.dataholder.y_train)
-    
-                # Update model with the best estimator found during tuning
-                self.models[i] = grid.best_estimator_
+        try:
+            self.dataholder.predictions = {"train": [], "test": []}
+            self.dataholder.scores = {"train": {}, "test": {}}
+            
+            for i, model in enumerate(self.models):
+                # Create a pipeline that includes preprocessing and the model
+                pipeline = self.build_pipeline(model)
+        
+                if self.dataholder.hyperparameter_tuning:
+                    # If tuning is enabled, perform grid search with cross-validation
+                    grid = self.get_gridsearch(pipeline)
+                    grid.fit(self.dataholder.X_train, self.dataholder.y_train)
+        
+                    # Update model with the best estimator found during tuning
+                    self.models[i] = grid.best_estimator_
+                else:
+                    # Otherwise, fit the pipeline directly
+                    pipeline.fit(self.dataholder.X_train, self.dataholder.y_train)
+                    self.models[i] = pipeline
+        
+            # If multiple models are available, use cross-validation to select the best one
+            if len(self.models) > 1:
+                self.dataholder.best_model = self.models[self.cross_validate_prefitted_models()]
             else:
-                # Otherwise, fit the pipeline directly
-                pipeline.fit(self.dataholder.X_train, self.dataholder.y_train)
-                self.models[i] = pipeline
+                self.dataholder.best_model = self.models[0]
+        
+            # Make predictions using the selected best model
+            self.dataholder.predictions["train"] = self.dataholder.best_model.predict(self.dataholder.X_train)
+            self.dataholder.predictions["test"] = self.dataholder.best_model.predict(self.dataholder.X_test)
+        
+            # Evaluate and store scores for each metric on both train and test sets
+            for metric, scorer in self.metrics.items():
+                if self.dataholder.regression_flag: # Regression
+                    self.dataholder.scores["train"][metric] = scorer(
+                        self.dataholder.y_train, self.dataholder.predictions["train"]
+                    )
+                    self.dataholder.scores["test"][metric] = scorer(
+                        self.dataholder.y_test, self.dataholder.predictions["test"]
+                    )
+                else: # Classification
+                    kwargs = {}
+                    if metric not in ["accuracy"]:
+                        kwargs["average"] = "macro"
+                    self.dataholder.scores["train"][metric] = scorer(
+                        self.dataholder.y_train, self.dataholder.predictions["train"], **kwargs
+                    )
+                    self.dataholder.scores["test"][metric] = scorer(
+                        self.dataholder.y_test, self.dataholder.predictions["test"], **kwargs
+                    )
     
-        # If multiple models are available, use cross-validation to select the best one
-        if len(self.models) > 1:
-            self.dataholder.best_model = self.models[self.cross_validate_prefitted_models()]
-        else:
-            self.dataholder.best_model = self.models[0]
-    
-        # Make predictions using the selected best model
-        self.dataholder.predictions["train"] = self.dataholder.best_model.predict(self.dataholder.X_train)
-        self.dataholder.predictions["test"] = self.dataholder.best_model.predict(self.dataholder.X_test)
-    
-        # Evaluate and store scores for each metric on both train and test sets
-        for metric, scorer in self.metrics.items():
-            if self.dataholder.regression_flag: # Regression
-                self.dataholder.scores["train"][metric] = scorer(
-                    self.dataholder.y_train, self.dataholder.predictions["train"]
-                )
-                self.dataholder.scores["test"][metric] = scorer(
-                    self.dataholder.y_test, self.dataholder.predictions["test"]
-                )
-            else: # Classification
-                self.dataholder.scores["train"][metric] = scorer(
-                    self.dataholder.y_train, self.dataholder.predictions["train"], average = "micro"
-                )
-                self.dataholder.scores["test"][metric] = scorer(
-                    self.dataholder.y_test, self.dataholder.predictions["test"], average = "micro"
-                )
-    
-        return
+            return True
+        except Exception as e:
+            print(e)
+            return False

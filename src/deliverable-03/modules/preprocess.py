@@ -2,13 +2,12 @@ from .chatbot import *
 from .dataholder import *
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_numeric_dtype
 from difflib import SequenceMatcher
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from typing import Tuple, Any, Dict
+from typing import Tuple, Any, Dict, List
 
 class DataFramePreprocessor:
     """
@@ -35,156 +34,6 @@ class DataFramePreprocessor:
             You are an AI assistant designed to help preprocess data.
             You do not provide explanations and only return answers in the requested format.
             """, temperature = 0.1)
-        self.load_dataframe()
-    
-    def load_dataframe(self) -> None:
-        """
-        Loads a CSV file into a DataFrame and performs initial preprocessing.
-    
-        This method reads a CSV file from the specified path, normalizes the column names 
-        to snake_case, and attempts to convert column types for better usability.
-        In case of any error during loading or preprocessing, it prints the error message.
-        """
-        path = self.dataholder.csv_path
-        try:
-            # Print and attempt to load the CSV file into a DataFrame
-            print(f"Loading data at {path}")
-            self.dataholder.df = pd.read_csv(path)
-
-            # Drop duplicate rows
-            self.dataholder.df = self.dataholder.df.drop_duplicates()
-    
-            # Normalize the column names (e.g., convert to lowercase, snake_case)
-            print("Normalizing column names")
-            self.normalize_column_names()
-    
-            # Convert column types using an LLM-assisted method
-            print("Converting column types")
-            self.convert_column_types()
-
-            # Final sanity test to ensure the dataframe is not empty and has at least two columns
-            if len(self.dataholder.df.index) == 0 or len(self.dataholder.df.columns) < 2:
-                raise Exception("Loaded dataframe was empty or had fewer than 2 columns after preliminary cleaning.")
-    
-            return
-        except Exception as e:
-            # Handle any exceptions during file loading or processing
-            print(f"Unable to load data at {path}")
-            print(e)
-    
-            return
-
-
-    
-    def normalize_column_names(self) -> None:
-        """
-        Normalizes the column names of the internal DataFrame to snake_case format.
-    
-        Returns:
-            None
-        """
-        # Use a large language model to intelligently convert column names
-        prompt = f"""
-        Given the following list of strings, convert the list of strings to snake case format.
-        If a column is already in snake case format, simply convert to lowercase.
-        Columns: {self.dataholder.df.columns}
-        Do not give an explanation, only return a list of strings.
-        """
-        
-        response = self.helper.call_llama_eval(prompt)
-
-        # If the response type is wrong, may fail, so wrap in a try-except block
-        try:
-            self.dataholder.df.columns = response
-        except:
-            print("Unable to normalize columns, using original column names instead.")
-    
-        return
-
-    def convert_column_types(self) -> None:
-        """
-        Infers and converts column data types in the DataFrame using LlamaBot assistance.
-    
-        Returns:
-            None
-    
-        Raises:
-            Prints an error message if type conversion fails.
-        """
-        # Construct a prompt to get suggested data types from the language model
-        prompt = f"""
-        Determine which data types should be used for each column of the following Pandas dataframe:
-        
-        DataFrame: {self.dataholder.df.head(10)}
-        
-        Do not give an explanation.
-        Do not assign a data type of str.
-        If a column has empty strings but is otherwise numeric, assign an appropriate numeric data type of int or float.
-        Convert datetime columns as necessary by assigning a datatype of exactly datetime64[ns].
-        For other columns containing text data, assign a data type of exactly object.
-        Provide only a dictionary with keys as column names and values as the assigned pandas data types.
-        """
-        # Call LlamaBot to get a column-type mapping
-        response = self.helper.call_llama_eval(prompt)
-        
-        try:
-            for column in response.keys():
-                unique_values = self.dataholder.df[column].unique()
-
-                # Drop columns with high uniqueness, as they are not discriminatory
-                # Likely includes information such as IDs, UUIDs, full addresses, etc.
-                # Drop columns with all unique values (likely IDs or UUIDs)
-                if len(unique_values) >= (0.5 * len(self.dataholder.df.index)):
-                    self.dataholder.df = self.dataholder.df.drop(column, axis = 1)
-    
-                # Handle binary columns by mapping to boolean integers
-                elif len(unique_values) == 2:
-                    prompt = f"""
-                    Give a mapping to convert the values to a boolean variable.
-                    values: {unique_values}
-                    
-                    Use the original value as the key, do not convert the original value's data type.
-                    Use the appropriate boolean value cast as an integer for the value.
-                    Return a dictionary.
-                    """
-                    mapping_dict = self.helper.call_llama_eval(prompt)
-                    self.dataholder.df[column] = self.dataholder.df[column].map(mapping_dict).astype(np.int64)
-    
-                # Handle all other columns based on inferred type
-                else:
-                    numeric = is_numeric_dtype(response[column])
-                    if numeric:
-                        # Attempt to convert to a numeric type (int or float)
-                        self.dataholder.df[column] = pd.to_numeric(self.dataholder.df[column], errors = "coerce")
-                    else:
-                        # Convert to the inferred non-numeric type
-                        self.dataholder.df[column] = self.dataholder.df[column].astype(response[column])
-    
-            print("The current version cannot support date or time columns. These will be dropped automatically.")
-    
-            # Drop datetime columns (unsupported)
-            self.dataholder.df = self.dataholder.df.select_dtypes(include = ["number", "object"])
-    
-        except Exception as e:
-            print("Unable to determine data types for columns. This may result in unexpected behavior for preprocessing.")
-            print(e)
-    
-        return
-
-
-
-    def split_features(self, y: str) -> None:
-        """
-        Splits the DataFrame into features (X) and target (y).
-    
-        Args:
-            y (str): The name of the target column.
-        """
-        self.dataholder.df = self.dataholder.df.dropna(subset = [y])
-        self.dataholder.X = self.dataholder.df.drop(y, axis = 1)
-        self.dataholder.y = self.dataholder.df[y]
-
-        return
 
     def validate_target_variable(self) -> int:
         """
@@ -195,21 +44,73 @@ class DataFramePreprocessor:
                  1 if it is classification on continuous data,
                 -1 if it is regression on categorical data.
         """
-        # Prompt the language model to determine if the target is categorical (0) or continuous (1)
-        prompt = f"""
-        Determine if the following column contains continuous or categorical data.
-        
-        Column: {self.dataholder.y}
-        
-        Return 0 for categorical or 1 for continuous.
-        """
-        
-        response = self.helper.call_llama_eval(prompt)
+        # If there are only 2 unique values, the target is categorical (0)
+        if len(self.dataholder.y.unique()) == 2:
+            response = 0
+        else:
+            # Prompt the language model to determine if the target is categorical (0) or continuous (1)
+            prompt = f"""
+            Determine if the following column contains continuous or categorical data.
+            
+            Column: {self.dataholder.y}
+            
+            Return 0 for categorical or 1 for continuous.
+            """
+            
+            response = self.helper.call_llama_eval(prompt)
     
         # Compare with expected task type (e.g., 0 = classification, 1 = regression)
         # Return difference: 0 = match, 1 or -1 = mismatch
-        return response - self.dataholder.task_type
-
+        return response - self.dataholder.regression_flag
+        
+    def bin_continuous_data(self, num_bins: int = 3) -> List[str]:
+        """
+        Discretizes a continuous target variable into categorical bins using quantile-based binning.
+    
+        This method:
+            - Uses pandas `qcut` to divide the target variable into quantile-based bins.
+            - Handles duplicate bin edges gracefully.
+            - Stores numeric bin indices in `dataholder.y`.
+            - Returns a list of human-readable interval labels corresponding to the bins.
+    
+        Args:
+            num_bins (int): The number of quantile bins to create. Default is 3.
+    
+        Returns:
+            List[str]: A list of string labels representing the bin intervals, or an empty list if binning fails.
+        """
+        try:
+            # Apply quantile-based binning to the target variable
+            binned_data, bin_edges = pd.qcut(
+                self.dataholder.y,
+                q = num_bins,
+                retbins = True,
+                labels = False,
+                duplicates = 'drop'  # Avoids errors from non-unique bin edges
+            )
+    
+            # Generate readable interval labels for each bin
+            interval_labels = [
+                f"[{bin_edges[i]:.2f}, {bin_edges[i+1]:.2f})"
+                for i in range(len(bin_edges) - 1)
+            ]
+    
+            # Replace numeric bin indices with human-readable labels
+            labeled_data = binned_data.map(lambda i: interval_labels[i] if pd.notna(i) else np.nan)
+    
+            # Update target column to use bin indices (still numerical, float for consistency)
+            self.dataholder.y = pd.Series(
+                labeled_data,
+                index = self.dataholder.y.index,
+                dtype = "float",
+                name = self.dataholder.y.name
+            )
+            return interval_labels
+    
+        except Exception as e:
+            # Log the error if binning fails
+            print(f"Error during binning: {e}")
+            return []
    
     def train_test_split(self, test_size: float = 0.2) -> None:
         """
@@ -295,7 +196,6 @@ class DataFramePreprocessor:
             self.dataholder.X_test = self.dataholder.X_test[self.dataholder.X_test[column].isin(non_outlier_values)]
     
         return
-
 
     def detect_and_relabel_outliers(self, column: str, dtype: bool) -> None:
         """
@@ -444,18 +344,24 @@ class DataFramePreprocessor:
         )
     
         # If classification, encode target variable using LabelEncoder
-        if not self.dataholder.task_type:
+        if not self.dataholder.regression_flag:
             self.dataholder.target_encoder = LabelEncoder()
             self.dataholder.y_train = pd.Series(self.dataholder.target_encoder.fit_transform(self.dataholder.y_train),
                                                 name = self.dataholder.y.name)
-            self.dataholder.y_test = self.dataholder.target_encoder.transform(self.dataholder.y_test,
-                                                                              name = self.dataholder.y.name)
+            self.dataholder.y_test = pd.Series(self.dataholder.target_encoder.transform(self.dataholder.y_test),
+                                               name = self.dataholder.y.name)
     
         return
 
 
-    # TODO
-    def bin_continuous_data(self) -> pd.Series:
+    def preprocess(self) -> bool:
+        try:
+            self.train_test_split()
+            self.clean_data(strictness = self.dataholder.cleaning_strictness)
+            self.standardize_and_encode()
+            return True
+        except Exception as e:
+            print (e)
+            return False
 
-        
-        pass
+    
