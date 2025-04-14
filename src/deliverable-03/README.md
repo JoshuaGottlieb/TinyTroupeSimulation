@@ -1,4 +1,4 @@
-# Deliverable 3 - ModelBot, an Agentic helper for doing basic Machine Learning tasks
+# ModelBot, an Agentic helper for doing basic Machine Learning tasks
 
 ## Summary
 
