@@ -3,8 +3,8 @@ from .dataholder import *
 from .preprocess import *
 from .evaluate import *
 from .model import *
-from typing import Dict, Any, List
 from sklearn.metrics import confusion_matrix
+import numpy as np
 
 @register_function("api_help")
 def api_help(dataholder: DataHolder, event_stream: List[Dict[str, Any]],
@@ -561,8 +561,8 @@ def classification_report(dataholder: DataHolder, event_stream: List[Dict[str, A
     )
 
     # Plot and display the training and testing confusion matrices
-    confusion_matrices = evaluator.plot_confusion_matrices()
-    plt.show()
+    confusion_matrices = evaluator.plot_confusion_matrices();
+   
 
     # Construct a detailed evaluation prompt for the language model
     prompt = f"""
@@ -625,10 +625,28 @@ def classification_report(dataholder: DataHolder, event_stream: List[Dict[str, A
     Be fair and explain your reasoning briefly.
     """
 
-    # Generate and display the LLM-based model evaluation
+    # Generate the LLM-based model evaluation
     judge_eval = evaluator.judge.call_llama(prompt = prompt, save_history = False)
-    display(Markdown(judge_eval))
 
+    # Save the PDF if flag is set
+    if dataholder.save_pdf:
+        save_status = evaluator.save_classification_report(
+            confusion_matrices,
+            judge_eval,
+            output_path = dataholder.save_path
+        )
+        # Print whether the report was successfully saved to a PDF
+        if save_status:
+            print_to_stream(event_stream, role = "bot", message = f"Successfully saved pdf at {dataholder.save_path}")
+        else:
+            print_to_stream(event_stream, role = "bot", message = f"Unable to save pdf at {dataholder.save_path}")
+            add_to_event_stream(event_stream, response)
+            return response
+    # Otherwise, display report inline
+    else:
+        plt.show()
+        display(Markdown(judge_eval))
+        
     # Finalize the response
     add_to_event_stream(event_stream, response, success = True)
     return response
