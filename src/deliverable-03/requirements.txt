@@ -1,0 +1,14 @@
+beautifulsoup4==4.13.3
+ipython==8.12.3
+ipython==8.20.0
+Markdown==3.5.2
+matplotlib==3.6.3
+numpy==2.2.4
+pandas==2.2.3
+Pillow==11.2.1
+reportlab==4.3.1
+scikit_learn==1.6.1
+scipy==1.15.2
+seaborn==0.13.2
+statsmodels==0.14.4
+together==1.5.5
