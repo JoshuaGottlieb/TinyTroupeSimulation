@@ -4,7 +4,7 @@
 
 ModelBot is an Agentic helper designed to perform regression and classification tasks from csv data and produce a PDF report for an end-user. ModelBot is designed to require minimal data science knowledge for operation and is powered by native Python libraries such as NumPy, Pandas, scikit-learn, Matplotlib, and Seaborn, with agents utilizing the Llama 3, 8 billion parameter model accessed from [Together.ai](https://www.together.ai/). As such, the ModelBot requires a Together API key to function.
 
-The current version of ModelBot is limited in scope. A limited amount of preprocessing is performed on the dataset before modeling. Currently, the only models used for regression are Linear Regression, Polynomial (Degree 3) Regression using Lasso regularization, and ElasticNet Regression, and the only models used for classification are Logistic Regression, Decision Tree Classifiers, and Random Forest Classifiers. A small hyperparameter grid can be searched at the user specification to perform limited model tuning; however, the grid is deliberately small to reduce fitting time. The expected performance of ModelBot is significantly lower than that of a human data scientist, as the preprocessing and modeling steps are relatively simplistic.
+The current version of ModelBot is limited in scope. A limited amount of preprocessing is performed on the dataset before modeling. Currently, the only models used for regression are Linear Regression, Polynomial (Degree 3) Regression using Lasso regularization, and ElasticNet Regression, and the only models used for classification are Logistic Regression, Decision Tree Classifiers, and Random Forest Classifiers. A small hyperparameter grid can be searched, if requested by the user, to perform limited model tuning; however, the grid is deliberately small to reduce fitting time. The expected performance of ModelBot is significantly lower than that of a human data scientist, as the preprocessing and modeling steps are relatively simplistic.
 
 ## Basic Workflow / User Journey Description
 
@@ -49,7 +49,6 @@ The libraries and version of Python used to create this project are listed below
 Python==3.12.3
 
 beautifulsoup4==4.13.3
-ipython==8.12.3
 ipython==8.20.0
 Markdown==3.5.2
 matplotlib==3.6.3
@@ -90,4 +89,4 @@ together==1.5.5
 - Add a function to save a regression report (regression counterpart to save_classification_report in [evaluate module](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/modules/evaluate.py))
 - Reformat the front-end to utilize Streamlit rather than using print statements
 - Standup using FastAPI, including handling serialization of custom Python objects
-- Clean up any code
+- Clean up the code, as needed
