@@ -84,12 +84,6 @@ together==1.5.5
 ```
 
 ## To Do
-- KNOWN BUG: Differentiate the "predictions" and "scores" dictionaries between regression and classification tasks. Currently, if a user invokes API calls sequentially, they can perform regression/classification and then try to generate a report of the other kind, which will result in a non-graceful error due to trying to find keys in the scores dictionary that do not exist.
-- Add a function to save a regression report (regression counterpart to save_classification_report in [evaluate module](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/modules/evaluate.py))
-- Add a function that can help the user determine what type of model to run (regression or classification)
-- Add feature importances (SHAP perhaps) for classification report function.
-- Add option to clear data at end of report functions so that more modeling can be done within the same chat session without manually clearing the dataholder using another API call.
-- Add hints for user after API call is completed to inform next steps.
 - Clean up this repository, including expanding the README, renaming directories for clarity, and possible restructuring of repository
 - Create a user journey flowchart and system design chart
 - Reformat the front-end to utilize Streamlit rather than using print statements
