@@ -48,7 +48,7 @@ The libraries and version of Python used to create this project are listed below
 ```
 Python==3.12.3
 
-beautifulsoup4==4.13.3
+beautifulsoup4==4.13.4
 ipython==8.20.0
 Markdown==3.5.2
 matplotlib==3.6.3
@@ -59,6 +59,7 @@ reportlab==4.3.1
 scikit_learn==1.6.1
 scipy==1.15.2
 seaborn==0.13.2
+shap==0.47.1
 statsmodels==0.14.4
 together==1.5.5
 ```
