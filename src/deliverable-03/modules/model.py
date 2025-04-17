@@ -269,7 +269,10 @@ class AutomaticModeler:
         """
         try:
             self.dataholder.predictions = {"train": [], "test": []}
-            self.dataholder.scores = {"train": {}, "test": {}}
+            if self.dataholder.regression_flag:
+                self.dataholder.regression_scores = {"train": {}, "test": {}}
+            else:
+                self.dataholder.classification_scores = {"train": {}, "test": {}}
             
             for i, model in enumerate(self.models):
                 # Create a pipeline that includes preprocessing and the model
@@ -300,20 +303,20 @@ class AutomaticModeler:
             # Evaluate and store scores for each metric on both train and test sets
             for metric, scorer in self.metrics.items():
                 if self.dataholder.regression_flag: # Regression
-                    self.dataholder.scores["train"][metric] = scorer(
+                    self.dataholder.regression_scores["train"][metric] = scorer(
                         self.dataholder.y_train, self.dataholder.predictions["train"]
                     )
-                    self.dataholder.scores["test"][metric] = scorer(
+                    self.dataholder.regression_scores["test"][metric] = scorer(
                         self.dataholder.y_test, self.dataholder.predictions["test"]
                     )
                 else: # Classification
                     kwargs = {}
                     if metric not in ["accuracy"]:
                         kwargs["average"] = "macro"
-                    self.dataholder.scores["train"][metric] = scorer(
+                    self.dataholder.classification_scores["train"][metric] = scorer(
                         self.dataholder.y_train, self.dataholder.predictions["train"], **kwargs
                     )
-                    self.dataholder.scores["test"][metric] = scorer(
+                    self.dataholder.classification_scores["test"][metric] = scorer(
                         self.dataholder.y_test, self.dataholder.predictions["test"], **kwargs
                     )
     
