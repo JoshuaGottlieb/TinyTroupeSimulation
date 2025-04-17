@@ -7,13 +7,14 @@ import seaborn as sns
 from scipy import stats
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LinearRegression, Lasso, ElasticNet
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, roc_curve, roc_auc_score
+from sklearn.preprocessing import LabelBinarizer
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
+import shap
 from IPython.display import display, Markdown
-from matplotlib.axes import Axes
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, ListFlowable, ListItem
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, ListFlowable, ListItem, KeepTogether, Preformatted
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import io
 from PIL import Image as PILImage
@@ -45,8 +46,8 @@ class ModelEvaluator():
         
         # Store the model and model type (estimator part of the pipeline)
         self.model_name, self.model = self.dataholder.best_model.named_steps['estimator'].steps[0]
-        self.transformer = Pipeline(self.dataholder.best_model.steps[:-1])
-        self.transformer.fit(self.dataholder.X_train)
+        self.model_name = f"{' '.join([s.title() for s in self.model_name.split('_')])}"
+        self.transformer = self.dataholder.best_model.named_steps['preprocess']
         
         # LLM-based evaluation agent for interpreting model results in plain language
         self.judge = LlamaBot(
@@ -127,7 +128,7 @@ class ModelEvaluator():
         # Calculate 95% confidence intervals
         confidence_level = 0.95
         alpha = 1 - confidence_level
-        t_crit = stats.t.ppf(1 - alpha / 2, df=df_resid)
+        t_crit = stats.t.ppf(1 - alpha / 2, df = df_resid)
         ci_lower = coefs - t_crit * se_b
         ci_upper = coefs + t_crit * se_b
     
@@ -170,66 +171,72 @@ class ModelEvaluator():
         return results_df, f_stat, f_p_value, aic, bic
 
     def plot_anova(self, coefficient_df: pd.DataFrame, f_stat: float,
-                   f_p_value: float, aic: float, bic: float) -> str:
+                   f_p_value: float, aic: float, bic: float, max_chars: int = 100,
+                   rows_per_page: int = 25) -> str:
         """
-        Generates a statsmodels-style formatted summary string for regression results.
+        Generates a statsmodels-style formatted summary string for regression results,
+        constrained by line width and paginated for long coefficient tables.
     
         Args:
-            coefficient_df (pd.DataFrame): A DataFrame containing regression output with the following columns:
-                ['coefficient', 'std_error', 't_stat', 'p_value', '0.025', '0.975'], and variable names as the index.
-            f_stat (float): The F-statistic for the overall model.
-            f_p_value (float): The p-value associated with the F-statistic.
-            aic (float): The Akaike Information Criterion for model selection.
-            bic (float): The Bayesian Information Criterion for model selection.
+            coefficient_df (pd.DataFrame): DataFrame containing regression coefficients and statistics.
+            f_stat (float): F-statistic value for the overall model.
+            f_p_value (float): P-value associated with the F-statistic.
+            aic (float): Akaike Information Criterion value for model comparison.
+            bic (float): Bayesian Information Criterion value for model comparison.
+            max_chars (int): Maximum number of characters per line.
+            rows_per_page (int): Max number of coefficient rows before splitting across pages.
     
         Returns:
-            str: A formatted summary string showing model diagnostics and regression coefficients,
-                 similar in style to the statsmodels OLS output.
+            str: A formatted multiline string summarizing regression model results.
         """
-        # Extract model performance metrics
-        r2_score = self.dataholder.scores["train"]["r2_score"]
-        rmse = self.dataholder.scores["train"]["rmse"]
+        # Retrieve key regression diagnostics
+        r2_score = self.dataholder.regression_scores["train"]["r2_score"]
+        rmse = self.dataholder.regression_scores["train"]["rmse"]
         n_samples = len(self.dataholder.y_train.index)
         p_features = len(coefficient_df.index)
         adjusted_r2 = 1 - ((1 - r2_score) * (n_samples - 1) / (n_samples - p_features - 1))
         df_resid = n_samples - p_features
-        method = self.model_name.split("_")[0]
+        method = self.model_name.split("Regression")[0].strip().lower()
         title = f"{method.title()} Regression Results"
         dependent_variable = self.dataholder.y.name
     
-        # Initialize summary content
+        # Set up layout constants
         lines = []
-        length = 110
-        divider = '=' * length
-        label_width = 35
-        value_pad = 50  # Total width for label + value before the divider
+        divider = "=" * max_chars
+        header_width = max_chars
+        label_width = 28
+        value_pad = 48
     
-        # Add title and header
-        lines.append(f"{title.center(length)}")
+        # Header Section
+        lines.append(f"{title.center(header_width)}")
         lines.append(divider)
-    
-        # Add general model statistics
         lines.append(f"{'Dependent Variable:':<{label_width}} {dependent_variable:<{value_pad - label_width}}| "
-                     f"{'R-squared:':<{label_width}} {r2_score:>{length - (2 * label_width) - value_pad},.3f}")
+                     f"{'R-squared:':<{label_width}} {r2_score:>{max_chars - (2 * label_width) - value_pad},.3f}")
         lines.append(f"{'Model:':<{label_width}} {method:<{value_pad - label_width}}| "
-                     f"{'Adjusted R-squared:':<{label_width}} {adjusted_r2:>{length - (2 * label_width) - value_pad},.3f}")
+                     f"{'Adjusted R-squared:':<{label_width}} {adjusted_r2:>{max_chars - (2 * label_width) - value_pad},.3f}")
         lines.append(f"{'No. Observations:':<{label_width}} {n_samples:<{value_pad - label_width}}| "
-                     f"{'F-statistic:':<{label_width}} {f_stat:>{length - (2 * label_width) - value_pad}.3f}")
+                     f"{'F-statistic:':<{label_width}} {f_stat:>{max_chars - (2 * label_width) - value_pad}.3f}")
         lines.append(f"{'Df Residuals:':<{label_width}} {df_resid:<{value_pad - label_width}}| "
-                     f"{'Prob (F-statistic):':<{label_width}} {f_p_value:>{length - (2 * label_width) - value_pad}.3g}")
+                     f"{'Prob (F-statistic):':<{label_width}} {f_p_value:>{max_chars - (2 * label_width) - value_pad}.3g}")
         lines.append(f"{'Df Model:':<{label_width}} {p_features:<{value_pad - label_width}}| "
-                     f"{'AIC:':<{label_width}} {aic:>{length - (2 * label_width) - value_pad},.3f}")
+                     f"{'AIC:':<{label_width}} {aic:>{max_chars - (2 * label_width) - value_pad},.3f}")
         lines.append(f"{'RMSE:':<{label_width}} {rmse:<{value_pad - label_width},.3f}| "
-                     f"{'BIC:':<{label_width}} {bic:>{length - (2 * label_width) - value_pad},.3f}")
+                     f"{'BIC:':<{label_width}} {bic:>{max_chars - (2 * label_width) - value_pad},.3f}")
         lines.append(divider)
     
-        # Add coefficient table header
-        header = f"{'':<{label_width}} {'coef':^10} {'std err':^12} {'t':^10} {'P>|t|':^10} {'0.025':^12} {'0.975':^12}"
-        lines.append(header)
-        lines.append("-" * length)
+        # Coefficient table headers
+        def add_coef_header():
+            lines.append(f"{'':<{label_width}} {'coef':^10} {'std err':^12} {'t':^10} "
+                         f"{'P>|t|':^10} {'0.025':^12} {'0.975':^12}")
+            lines.append("-" * max_chars)
     
-        # Add rows for each coefficient
-        for idx, row in coefficient_df.iterrows():
+        add_coef_header()
+    
+        # Add rows with page breaks if needed
+        for i, (idx, row) in enumerate(coefficient_df.iterrows()):
+            if i > 0 and i % rows_per_page == 0:
+                lines.append("\f")  # Form feed character to signal page break
+                add_coef_header()
             lines.append(f"{idx:<{label_width}} "
                          f"{row['coefficient']:^10,.2g} "
                          f"{row['std_error']:^12,.2g} "
@@ -238,9 +245,8 @@ class ModelEvaluator():
                          f"{row['0.025']:^12,.2g} "
                          f"{row['0.975']:^12,.2g}")
     
-        # Combine all lines into a single string
         return "\n".join(lines)
-
+    
     def plot_residuals(self, residuals: np.array(float)) -> plt.Figure:
         """
         Creates a residual plot to visualize the difference between actual and predicted values,
@@ -306,25 +312,22 @@ class ModelEvaluator():
     
         Args:
             is_test (bool): Indicates whether to use the test set (True) or training set (False).
-            ax (plt.Axes): Matplotlib Axes object on which the heatmap will be plotted.
+            ax (plt.Axes): Matplotlib ax object on which the heatmap will be plotted.
         """
         
         # Select the appropriate true and predicted labels based on the mode (train/test)
         if is_test:
             y = self.dataholder.y_test
             y_pred = self.dataholder.predictions["test"]
-            metrics = self.dataholder.scores["test"]
+            metrics = self.dataholder.classification_scores["test"]
         else:
             y = self.dataholder.y_train
             y_pred = self.dataholder.predictions["train"]
-            metrics = self.dataholder.scores["train"]
+            metrics = self.dataholder.classification_scores["train"]
         
         # Compute the confusion matrix
         conf = confusion_matrix(y, y_pred)
         matrix_values = np.asarray([f'{value:0d}' for value in conf.flatten()]).reshape(*conf.shape)
-        
-        # Create class labels using the fitted target encoder
-        # labels = self.dataholder.target_encoder.classes_.reshape(*conf.shape)
     
         # Plot the confusion matrix as a heatmap
         sns.heatmap(conf, annot = matrix_values, fmt = '', annot_kws = {'fontsize': 14},
@@ -363,12 +366,12 @@ class ModelEvaluator():
     
         return
 
-    def plot_confusion_matrices(self) -> plt.Axes:
+    def plot_confusion_matrices(self) -> plt.Figure:
         """
         Generates side-by-side confusion matrix heatmaps for both training and test data.
     
         Returns:
-            plt.Axes: A matplotlib Axes array containing the two confusion matrix subplots.
+            plt.Figure: A matplotlib Figure containing the confusion matrices.
         """
     
         # Create a figure with two subplots: one for training, one for testing
@@ -382,46 +385,237 @@ class ModelEvaluator():
         # Adjust subplot spacing
         plt.tight_layout()
     
-        return ax
+        return fig
 
-    def save_classification_report(self, confusion_matrices: Union[Sequence[Axes], np.ndarray],
-                                   judge_eval: str, output_path: str) -> bool:
+    def plot_roc_curve(self) -> Tuple[plt.Figure, float]:
         """
-        Generate and save a PDF report containing a disclaimer, a rendered confusion matrix figure,
-        and a markdown-formatted evaluation section with enhanced formatting support,
-        including headers, lists, and tables.
+        Plots the Receiver Operating Characteristic (ROC) curve for a trained classification model.
+        
+        This method generates either a binary or macro-averaged multiclass ROC curve, depending on the
+        number of unique target classes in the training set. The ROC curve visualizes the model's
+        ability to distinguish between classes at various threshold settings. It also includes
+        annotations for the area under the curve (AUC), a random classifier, and a perfect classifier.
+        
+        Returns:
+            Tuple[plt.Figure, float]:
+                - A Matplotlib figure object containing the ROC curve plot.
+                - A float representing the AUC (Area Under the Curve) score.
+        """
+        # Determine the number of classes in the training target
+        n_classes = len(self.dataholder.y_train.unique())
+    
+        # Get the model's predicted probabilities on the test set
+        y_score = self.dataholder.best_model.predict_proba(self.dataholder.X_test)
+    
+        # Create a figure and axis for the plot
+        fig, ax = plt.subplots(figsize = (16, 8))
+    
+        if n_classes == 2:
+            # Binary classification ROC curve
+            fpr, tpr, _ = roc_curve(self.dataholder.y_test, y_score[:, 1])
+            roc_auc = roc_auc_score(self.dataholder.y_test, y_score[:, 1])
+    
+            # Plot ROC curve for binary classification
+            ax.plot(
+                fpr, tpr,
+                label = f"{self.model_name} ROC Curve (AUC = {roc_auc:.2f})",
+                color = "cornflowerblue", linewidth = 4
+            )
+            ax.set_title(f"Receiver Operating Characteristic for {self.model_name}", fontsize = 20)
+    
+        else:
+            # Multiclass classification: compute macro-average ROC
+            label_binarizer = LabelBinarizer().fit(self.dataholder.y_train)
+            y_onehot_test = label_binarizer.transform(self.dataholder.y_test)
+    
+            fpr_grid = np.linspace(0.0, 1.0, 1000)
+            mean_tpr = np.zeros_like(fpr_grid)
+    
+            # Compute ROC curve and interpolate for each class
+            for i in range(n_classes):
+                fpr, tpr, _ = roc_curve(y_onehot_test[:, i], y_score[:, i])
+                mean_tpr += np.interp(fpr_grid, fpr, tpr)
+    
+            # Average the TPRs and compute overall AUC
+            mean_tpr /= n_classes
+            roc_auc = roc_auc_score(
+                self.dataholder.y_test, y_score,
+                multi_class = "ovr", average = "macro"
+            )
+    
+            # Plot the macro-average ROC curve
+            ax.plot(
+                fpr_grid, mean_tpr,
+                label = f"{self.model_name} Macro-Average ROC Curve (AUC = {roc_auc:.2f})",
+                color = "cornflowerblue", linewidth = 4
+            )
+            ax.set_title(f"Macro-Average Receiver Operating Characteristic for {self.model_name}", fontsize = 20)
+    
+        # Plot reference lines for perfect and random classifiers
+        ax.set_xlim([0, 1])
+        ax.set_ylim([0, 1])
+        ax.axline((0, 0), slope = 1, color = "black", linestyle = "--", label = "Random Chance Classifier (AUC = 0.5)")
+        ax.axhline(ax.get_ylim()[1] * 0.995, color = "green", linestyle = "--", label = "Perfect Classifier (AUC = 1)")
+    
+        # Add labels and formatting
+        ax.set_xlabel("False Positive Rate", fontsize = 16)
+        ax.set_ylabel("True Positive Rate", fontsize = 16)
+        ax.tick_params(axis = "both", labelsize = 14)
+        ax.legend(fontsize = 12, loc = 4)
+    
+        return fig, roc_auc
+
+    def get_shap_scores(
+        self, explainer: shap.Explainer, X: pd.DataFrame,
+        feature_names: List[str], top_n: int = 10
+    ) -> Tuple[List[Tuple[str, float]], List[Tuple[str, float]]]:
+        """
+        Calculates SHAP importance scores and returns the top N most impactful features.
+    
+        This method computes both the average and maximum absolute SHAP values for each feature
+        across all predictions, and returns the top N features ranked by those scores.
     
         Args:
-            confusion_matrices (Union[Sequence[Axes], np.ndarray]): A list or array of matplotlib Axes
-                objects that make up the confusion matrix subplot grid.
-            judge_eval (str): A Markdown-formatted string containing evaluation commentary or analysis.
-            output_path (str): The file path where the PDF report will be saved.
+            explainer (shap.Explainer): A fitted SHAP explainer object (e.g., TreeExplainer, KernelExplainer).
+            X (pd.DataFrame): The dataset to compute SHAP values for.
+            feature_names (List[str]): A list of feature names matching the columns in X.
+            top_n (int, optional): Number of top features to return. Defaults to 10.
     
         Returns:
-            bool: Whether the classification report was successfully saved to output_path.
+            Tuple[List[Tuple[str, float]], List[Tuple[str, float]]]:
+                - top_avg_scores: Top N features ranked by average absolute SHAP value.
+                - top_max_scores: Top N features ranked by maximum absolute SHAP value.
+        """
+        # Compute SHAP values for the input data
+        shap_values = explainer(X)
+    
+        # Get absolute SHAP values to assess feature importance (handles both single-output and multi-output cases)
+        values_array = np.abs(shap_values.values if hasattr(shap_values, 'values') else shap_values)
+    
+        # Calculate average and maximum SHAP values across all samples
+        avg_scores = np.round(values_array.mean(axis = 0), decimals = 2)
+        max_scores = np.round(values_array.max(axis = 0), decimals = 2)
+    
+        # Pair each score with the corresponding feature name
+        avg_pairs = list(zip(feature_names, avg_scores))
+        max_pairs = list(zip(feature_names, max_scores))
+    
+        # Sort the scores in descending order and extract the top N features
+        top_avg_scores = sorted(avg_pairs, key = lambda x: x[1], reverse = True)[:top_n]
+        top_max_scores = sorted(max_pairs, key = lambda x: x[1], reverse = True)[:top_n]
+    
+        return top_avg_scores, top_max_scores
+        
+    def shap_summary_plot(self) -> Tuple[plt.Figure, List[Tuple[str, float]], List[Tuple[str, float]]]:
+        """
+        Generates SHAP summary bar plots to visualize feature importance for a trained model.
+        
+        This method:
+        - Transforms the test set using the model's preprocessing pipeline.
+        - Computes SHAP values to quantify the contribution of each feature to model predictions.
+        - Extracts and ranks the top features by average and maximum absolute SHAP values.
+        - Plots two horizontal bar charts:
+            - Left: Features sorted by average absolute SHAP value (overall importance).
+            - Right: Features sorted by maximum absolute SHAP value (peak importance in any sample).
+        
+        Returns:
+            Tuple[plt.Figure, List[Tuple[str, float]], List[Tuple[str, float]]]:
+                - A Matplotlib figure containing two SHAP bar plots side by side.
+                - A list of tuples with the top features by average absolute SHAP values.
+                - A list of tuples with the top features by maximum absolute SHAP values.
+        """
+        # Transform test data using the model's preprocessing pipeline
+        X_test = self.transformer.transform(self.dataholder.X_test)
+    
+        # Clean up feature names for readability from transformer output
+        feature_names = [
+            " ".join((name.split("__")[-1].split('_')))
+            for name in self.transformer.get_feature_names_out()
+        ]
+    
+        # Create a SHAP explainer using the model’s prediction method
+        explainer = shap.Explainer(self.model.predict, X_test, feature_names = feature_names)
+    
+        # Get SHAP scores: average and max importance per feature
+        top_avg_scores, top_max_scores = self.get_shap_scores(explainer, X_test, feature_names)
+    
+        # Separate names and values for plotting
+        avg_features, avg_values = zip(*top_avg_scores)
+        max_features, max_values = zip(*top_max_scores)
+    
+        # Set up a side-by-side horizontal bar chart layout
+        fig, ax = plt.subplots(1, 2, figsize = (16, 8))
+        fig.suptitle('Top SHAP Feature Importances', fontsize = 20)
+    
+        # Plot average SHAP values
+        ax[0].barh(avg_features[::-1], avg_values[::-1], color = 'skyblue')
+        ax[0].set_title("Average Importance per Feature", fontsize = 16)
+        ax[0].set_xlabel("|mean SHAP Value|", fontsize = 14)
+        ax[0].tick_params(axis = "both", labelsize = 14)
+    
+        # Plot maximum SHAP values
+        ax[1].barh(max_features[::-1], max_values[::-1], color = 'salmon')
+        ax[1].set_title("Maximum Importance per Feature", fontsize = 16)
+        ax[1].set_xlabel("|max SHAP Value|", fontsize = 14)
+        ax[1].tick_params(axis = "both", labelsize = 14)
+    
+        # Adjust layout for better spacing
+        plt.tight_layout(rect = [0, 0, 1, 0.95])
+    
+        return fig, top_avg_scores, top_max_scores
+
+    def figure_to_reportlab_image(self, fig: plt.Figure) -> Image:
+        """
+        Convert a matplotlib Figure to a ReportLab-compatible Image flowable
+        with automatic scaling to fit within a PDF page's width.
+    
+        Args:
+            fig (plt.Figure): A matplotlib figure object to convert.
+    
+        Returns:
+            reportlab.platypus.Image: A scaled ReportLab image ready for PDF rendering.
+        """
+        # Save the matplotlib figure to an in-memory buffer
+        buf = io.BytesIO()
+        fig.savefig(buf, format = 'png', bbox_inches = 'tight', dpi = 300)
+        buf.seek(0)
+    
+        # Open the image with PIL to get its original size
+        pil_image = PILImage.open(buf)
+        img_width, img_height = pil_image.size
+    
+        # Determine scaling factor to fit within letter-sized page (1-inch margins)
+        max_width = letter[0] - 72
+        scale = min(max_width / img_width, 1.0)
+        scaled_width = img_width * scale
+        scaled_height = img_height * scale
+    
+        # Return a ReportLab Image object with scaled dimensions
+        buf.seek(0)
+        return Image(buf, width = scaled_width, height = scaled_height)
+
+    def save_classification_report(self, confusion_matrices: plt.Figure, roc_curves: plt.Figure,
+                                   shap_values: plt.Figure, judge_eval: str, output_path: str) -> bool:
+        """
+        Generate a structured PDF report that includes:
+          - A disclaimer
+          - Visuals for the confusion matrix, ROC curves, and SHAP values
+          - A markdown-formatted evaluation section (headers, lists, tables)
+    
+        Args:
+            confusion_matrices (plt.Figure): Matplotlib figure for the confusion matrix.
+            roc_curves (plt.Figure): Matplotlib figure for the ROC curves.
+            shap_values (plt.Figure): Matplotlib figure for SHAP values.
+            judge_eval (str): Markdown-formatted evaluation/analysis text.
+            output_path (str): File path where the PDF report will be saved.
+    
+        Returns:
+            bool: True if the report is successfully saved; False otherwise.
         """
         try:
-            if isinstance(confusion_matrices, np.ndarray):
-                confusion_matrices = confusion_matrices.flatten()
-        
-            fig = confusion_matrices[0].get_figure()
-        
-            # Save figure to buffer
-            buf = io.BytesIO()
-            fig.savefig(buf, format = 'png', bbox_inches = 'tight', dpi = 300)
-            buf.seek(0)
-        
-            # Load image with PIL to get size
-            pil_image = PILImage.open(buf)
-            img_width, img_height = pil_image.size
-            max_width = letter[0] - 72  # 1-inch margins
-            scale = min(max_width / img_width, 1.0)
-            scaled_width = img_width * scale
-            scaled_height = img_height * scale
-            buf.seek(0)
-        
-            # Set up PDF document
-            doc = SimpleDocTemplate(output_path, pagesize=letter)
+            doc = SimpleDocTemplate(output_path, pagesize = letter)
+    
+            # Define base and custom styles
             styles = getSampleStyleSheet()
             custom_styles = {
                 "h1": ParagraphStyle("Heading1", parent = styles["Heading1"], fontSize = 16, spaceAfter = 10),
@@ -433,10 +627,10 @@ class ModelEvaluator():
                 "p": styles["Normal"],
                 "ul": styles["Normal"]
             }
-        
+    
             elements = []
-        
-            # Add disclaimer at the top
+    
+            # Add disclaimer paragraph
             disclaimer_text = (
                 "This model and explanation were generated by ModelBot, an agent designed to help non-technical "
                 "users perform basic machine learning modeling, powered by Llama 3. It is not "
@@ -444,26 +638,151 @@ class ModelEvaluator():
                 "inaccuracies within this report."
             )
             disclaimer_style = ParagraphStyle("Disclaimer", parent = styles["Normal"],
-                                              fontSize = 8, textColor = "gray")
+                                              fontSize = 8, textColor = "gray", spaceAfter = 2)
             elements.append(Paragraph(disclaimer_text, disclaimer_style))
             elements.append(Spacer(1, 12))
-        
-            # Add confusion matrix image
-            img = Image(buf, width = scaled_width, height = scaled_height)
-            elements.append(img)
-            elements.append(Spacer(1, 12))
-        
-            # Convert markdown to HTML
+    
+            # --- Figures with headers, grouped with KeepTogether ---
+    
+            # Confusion Matrix Section
+            cm_section = KeepTogether([
+                # Paragraph("Confusion Matrix", custom_styles["h5"]),
+                self.figure_to_reportlab_image(confusion_matrices),
+                Spacer(1, 12)
+            ])
+            elements.append(cm_section)
+    
+            # ROC Curve Section
+            roc_section = KeepTogether([
+                # Paragraph("ROC Curves", custom_styles["h5"]),
+                self.figure_to_reportlab_image(roc_curves),
+                Spacer(1, 12)
+            ])
+            elements.append(roc_section)
+    
+            # SHAP Summary Section
+            shap_section = KeepTogether([
+                # Paragraph("SHAP Summary", custom_styles["h5"]),
+                self.figure_to_reportlab_image(shap_values),
+                Spacer(1, 12)
+            ])
+            elements.append(shap_section)
+    
+            # --- Markdown Evaluation Section ---
             html = markdown.markdown(judge_eval, extensions = ["tables"])
             soup = BeautifulSoup(html, 'html.parser')
-        
-            # Parse HTML into ReportLab flowables
+    
             for tag in soup:
                 if tag.name in ["h1", "h2", "h3", "h4", "h5"]:
                     elements.append(Paragraph(tag.get_text(), custom_styles[tag.name]))
                     elements.append(Spacer(1, 6))
                 elif tag.name == "p":
-                    elements.append(Paragraph(str(tag), custom_styles["p"]))
+                    elements.append(Paragraph(tag.get_text(), custom_styles["p"]))
+                    elements.append(Spacer(1, 6))
+                elif tag.name == "ul":
+                    bullets = [
+                        ListItem(Paragraph(li.get_text(), custom_styles["ul"]))
+                        for li in tag.find_all("li")
+                    ]
+                    elements.append(ListFlowable(bullets, bulletType = 'bullet'))
+                    elements.append(Spacer(1, 6))
+                elif tag.name == "table":
+                    rows = []
+                    for row in tag.find_all("tr"):
+                        cells = [cell.get_text(strip = True) for cell in row.find_all(["th", "td"])]
+                        rows.append(cells)
+    
+                    table = Table(rows, hAlign = 'LEFT')
+                    table.setStyle(TableStyle([
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ]))
+                    elements.append(table)
+                    elements.append(Spacer(1, 12))
+    
+            # Final PDF build
+            doc.build(elements)
+            return True
+    
+        except Exception as e:
+            print("Error saving classification report:", e)
+            traceback.print_exc()
+            return False
+
+    def save_regression_report(self, anova_table: str, residual_plot: plt.Figure,
+                               judge_eval: str, output_path: str) -> bool:
+        """
+        Generate a structured regression PDF report that includes:
+          - A disclaimer
+          - An ANOVA table displayed as preformatted plain text
+          - A residual plot (matplotlib figure)
+          - A markdown-formatted evaluation section (supports headers, tables, lists)
+    
+        Args:
+            anova_table (str): A plain-text string representing the ANOVA table.
+            residual_plot (plt.Figure): A matplotlib figure showing the residuals.
+            judge_eval (str): Markdown-formatted analysis or commentary.
+            output_path (str): File path where the PDF report will be saved.
+    
+        Returns:
+            bool: True if the report was successfully saved, False otherwise.
+        """
+        try:
+            doc = SimpleDocTemplate(output_path, pagesize = letter)
+    
+            # Define base and custom styles
+            styles = getSampleStyleSheet()
+            custom_styles = {
+                "h1": ParagraphStyle("Heading1", parent = styles["Heading1"], fontSize = 16, spaceAfter = 10),
+                "h2": ParagraphStyle("Heading2", parent = styles["Heading2"], fontSize = 14, spaceAfter = 8),
+                "h3": ParagraphStyle("Heading3", parent = styles["Heading3"], fontSize = 12, spaceAfter = 6),
+                "h4": ParagraphStyle("Heading4", parent = styles["Heading4"], fontSize = 11, spaceAfter = 5),
+                "h5": ParagraphStyle("Heading5", parent = styles["Normal"], fontSize = 10,
+                                     spaceAfter = 4, fontName = "Helvetica-Bold"),
+                "p": styles["Normal"],
+                "ul": styles["Normal"],
+                "code": ParagraphStyle("Code", fontName = "Courier", fontSize = 7.5,
+                                       leading = 9, spaceAfter = 6, leftIndent = 6, rightIndent = 6)
+            }
+    
+            elements = []
+    
+            # --- Disclaimer ---
+            disclaimer_text = (
+                "This model and explanation were generated by ModelBot, an agent designed to help non-technical "
+                "users perform basic machine learning modeling, powered by Llama 3. It is not "
+                "a replacement for a human data scientist, and there may be discrepancies and "
+                "inaccuracies within this report."
+            )
+            disclaimer_style = ParagraphStyle("Disclaimer", parent = styles["Normal"],
+                                              fontSize = 8, textColor = "gray", spaceAfter = 2)
+            elements.append(Paragraph(disclaimer_text, disclaimer_style))
+            elements.append(Spacer(1, 12))
+    
+            # --- ANOVA Table (from markdown string) ---
+            anova_preformatted = Preformatted(anova_table, style = custom_styles["code"])
+            elements.append(anova_preformatted)
+            elements.append(Spacer(1, 12))
+        
+            # --- Residual Plot ---
+            residual_section = KeepTogether([
+                self.figure_to_reportlab_image(residual_plot),
+                Spacer(1, 12)
+            ])
+            elements.append(residual_section)
+    
+            # --- Judge Evaluation ---
+            html = markdown.markdown(judge_eval, extensions = ["tables"])
+            soup = BeautifulSoup(html, 'html.parser')
+    
+            for tag in soup:
+                if tag.name in ["h1", "h2", "h3", "h4", "h5"]:
+                    elements.append(Paragraph(tag.get_text(), custom_styles[tag.name]))
+                    elements.append(Spacer(1, 6))
+                elif tag.name == "p":
+                    elements.append(Paragraph(tag.get_text(), custom_styles["p"]))
                     elements.append(Spacer(1, 6))
                 elif tag.name == "ul":
                     bullets = [
@@ -477,8 +796,8 @@ class ModelEvaluator():
                     for row in tag.find_all("tr"):
                         cells = [cell.get_text(strip = True) for cell in row.find_all(["th", "td"])]
                         rows.append(cells)
-        
-                    table = Table(rows, hAlign = 'LEFT')
+    
+                    table = Table(rows, hAlign='LEFT')
                     table.setStyle(TableStyle([
                         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
                         ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
@@ -487,12 +806,12 @@ class ModelEvaluator():
                     ]))
                     elements.append(table)
                     elements.append(Spacer(1, 12))
-        
-            # Build PDF
+    
+            # --- Build PDF ---
             doc.build(elements)
-            # print(f"PDF saved to: {output_path}")
-        
             return True
+    
         except Exception as e:
-            print(e)
+            print("Error saving regression report:", e)
+            traceback.print_exc()
             return False
