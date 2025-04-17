@@ -163,53 +163,78 @@ def detect_api_call(user_message: str, event_stream: List[Dict[str, Any]], datah
 
 def process_api_call(api_name: str, event_stream: List[Dict[str, Any]], dataholder: DataHolder) -> Dict[str, Any]:
     """
-    Processes an API call by validating prerequisites, collecting missing data,
-    and executing the corresponding function from the function registry.
+    Executes a named API call by checking prerequisites, prompting for user inputs if needed,
+    and invoking the corresponding function from the function registry.
+
+    The function also handles fallback logic, such as:
+    - Executing prerequisite APIs when data is missing.
+    - Offering alternative APIs when the main call is infeasible.
+    - Logging all relevant steps and responses to the event stream.
 
     Args:
-        api_name (str): The name of the API to be called.
-        event_stream (List[Dict[str, Any]]): The list that stores all response events.
-        dataholder (DataHolder): Object used to validate and store parameter values
-                                    and containing metadata for all available APIs.
+        api_name (str): Name of the target API to execute.
+        event_stream (List[Dict[str, Any]]): Stream of interaction messages to track all steps of the pipeline.
+        dataholder (DataHolder): Object that stores data, tracks metadata, and validates API requirements.
 
     Returns:
-        Dict[str, Any]: A response dictionary indicating the result of the API call.
+        Dict[str, Any]: A response dictionary containing execution status and any result metadata.
     """
 
-    # Initialize the response structure
+    # Initialize the response structure for the current API call
     response = {
         "role": "api_call",
         "content": api_name,
         "success": False
     }
 
-    # Check if the API is defined in metadata
+    # Check whether the API is defined in the metadata
     if api_name not in dataholder.metadata:
         print_to_stream(event_stream, role = "bot",
-                        message = f"Error: API {api_name} is not defined in the metadata")
+                        message = f"Error: API {api_name} is not defined in the metadata.")
         add_to_event_stream(event_stream, response)
         return response
 
-    # Get prerequisites for the API
+    # Extract and evaluate prerequisites for the API, if defined
     prerequisites = dataholder.metadata[api_name]["prerequisite"]
-
-    # If prerequisites are defined as a dict, validate them
-    if type(prerequisites) == dict:
+    if isinstance(prerequisites, dict):
         prerequisites = {key: eval(value) for key, value in prerequisites.get("data", {}).items()}
         missing_prereqs = dataholder.validate_parameters(prerequisites)
 
+        # If required inputs are missing
         if missing_prereqs:
-            # If missing prerequisites, handle sub-API call
+            # Check for alternative API if provided in metadata
+            alternative = dataholder.metadata[api_name].get("alternative", "")
+            if alternative:
+                alternative_prereqs = {
+                    key: eval(value) for key, value in
+                    dataholder.metadata[alternative]["prerequisite"].get("data", {}).items()
+                }
+                missing_alternative_prereqs = dataholder.validate_parameters(alternative_prereqs)
+
+                if not missing_alternative_prereqs:
+                    # Offer to switch to alternative API
+                    alternative_message = ' '.join([
+                        f"Alternative function {alternative} found.",
+                        "Do you want to try this function instead? Enter Y or N. Defaults to N."
+                    ])
+                    print_to_stream(event_stream, role = "bot", message = alternative_message)
+
+                    user_confirmation = input("Enter Y or N: ").lower()
+                    if user_confirmation == "y":
+                        return process_api_call(alternative, event_stream, dataholder)
+
+            # Execute prerequisite sub-API if alternative is not chosen
             sub_api = dataholder.metadata[api_name]["prerequisite"]["function"]
+            reason = dataholder.metadata[api_name]["prerequisite"].get("reason", "")
+            
             print_to_stream(event_stream, role = "bot",
                             message = f"Error: Missing prerequisites for API {api_name}, "
-                                    f"invoking prerequisite API call {sub_api}.")
-            reason = dataholder.metadata[api_name]["prerequisite"].get("reason", "")
-            print_to_stream(event_stream, role = "bot",
+                                    f"invoking prerequisite API {sub_api}.")
+            print_to_stream(event_stream, role="bot",
                             message = f"Reason for missing prerequisites: {reason}")
             add_to_event_stream(event_stream, response)
 
-            # Trigger sub-API call to fulfill prerequisites
+            # Log and invoke the sub-API to satisfy missing data
             add_to_event_stream(event_stream, {
                 "role": "detect_api",
                 "content": sub_api,
@@ -219,41 +244,56 @@ def process_api_call(api_name: str, event_stream: List[Dict[str, Any]], datahold
             sub_response = process_api_call(sub_api, event_stream, dataholder)
             add_to_event_stream(event_stream, sub_response)
 
-            # Retry current API if sub-call succeeded
+            # Retry original API if prerequisite was fulfilled
             if sub_response["success"]:
                 return process_api_call(api_name, event_stream, dataholder)
             else:
                 return sub_response
 
-    # Retrieve the function registered for the API
-    api_function = function_registry[api_name]
+    # Look up and execute the actual registered API function
+    api_function = function_registry.get(api_name)
 
     if api_function:
-        # Collect user input for each required parameter if missing
+        # Prompt user for any missing inputs required by this API
         for key, datatype in dataholder.metadata[api_name]["sample_payload"].items():
             while not dataholder.validate_parameter(key, eval(datatype)):
+                # Notify user that an input is required and suggest typing 'HELP' for guidance
+                print_to_stream(event_stream, role = "bot",
+                                message = "Missing inputs needed, please enter inputs. (Enter HELP for description.)")
                 value = input(f"Please enter {key} (datatype: {datatype}): ")
+
+                # If user enters 'HELP', show detailed input instructions from metadata
+                if value.lower() == "help":
+                    help_description = dataholder.metadata[api_name]["description"]["input"]
+                    print_to_stream(event_stream, role = "bot",
+                                    message = f"Here are the instructions for the inputs:\n{help_description}")
+                    continue
+
+                # Log user input and attempt to cast it to the expected datatype
                 print_to_stream(event_stream, role = "user", message = f"{key} = {value}")
                 try:
                     if eval(datatype) == bool:
-                        dataholder.set(key, bool(int(value)))
+                        dataholder.set(key, bool(int(value))) # Accepts 0/1 or other int-like bool inputs
                     else:
                         dataholder.set(key, eval(datatype)(value))
                 except:
+                    # Silently retry on failed type conversion
                     continue
 
-        # Execute the API function with the validated data
+        # Call the API function with validated inputs
         response = api_function(dataholder, event_stream, response)
 
+        # If API call fails, notify user and clear state
         if not response["success"]:
-            # Clear user inputs from dataholder due to failed function attempt
-            for key in dataholder.metadata[api_name]["sample_payload"].keys():
-                dataholder.delete_attribute(key)
-        
+            error_message = dataholder.metadata[api_name].get("error_message", "")
+            if error_message:
+                print_to_stream(event_stream, role = "bot", message = error_message)
+            clear_history = process_api_call("clear_history", event_stream, dataholder)
+
         return response
+
     else:
-        # Fallback if no function is registered for the API
+        # Error: No matching function found in the registry
         print_to_stream(event_stream, role = "bot",
                         message = f"Error: No function found for API call {api_name}")
-        
         return response
