@@ -1,10 +1,11 @@
-from .helper import register_function, add_to_event_stream, print_to_stream
+from .helper import register_function, add_to_event_stream, print_to_stream, process_api_call
 from .dataholder import *
 from .preprocess import *
 from .evaluate import *
 from .model import *
 from sklearn.metrics import confusion_matrix
 import numpy as np
+import matplotlib.pyplot as plt
 
 @register_function("api_help")
 def api_help(dataholder: DataHolder, event_stream: List[Dict[str, Any]],
@@ -94,6 +95,82 @@ def clear_history(dataholder: DataHolder, event_stream: List[Dict[str, Any]],
     add_to_event_stream(event_stream, response, success = True)
     return response
 
+@register_function("select_model")
+def select_model(dataholder: DataHolder, event_stream: List[Dict[str, Any]],
+                 response: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Guides the user through selecting an appropriate modeling approach—classification or regression—
+    based on their target variable and use case.
+
+    If no target variable is found, it triggers the data loading API to ensure the data is ready.
+    Once the target is available, the function explains the differences between classification and regression,
+    prompts the user for a choice, and dispatches the relevant report-generating API.
+
+    Args:
+        dataholder (DataHolder): Object managing current session state, including user data and parameters.
+        event_stream (List[Dict[str, Any]]): Stream of events used for UI interaction and logging.
+        response (Dict[str, Any]): Initial response dictionary to be populated with results or error details.
+
+    Returns:
+        Dict[str, Any]: Updated response dictionary containing the result of the selected modeling path.
+    """
+    # Begin with a general introduction to the modeling decision process
+    print_to_stream(event_stream, role = "bot",
+                    message = "I will help you decide whether classification or regression is best for your data.")
+
+    # Check whether a target variable ('y') is already stored in memory
+    print_to_stream(event_stream, role = "bot", message = "Checking to see if your data is loaded.")
+    y = dataholder.get("y")
+
+    # If no target variable exists, trigger the CSV data loading and target selection routine
+    if not y:
+        print_to_stream(event_stream, role = "bot",
+                        message = "No data is loaded, calling load_csv_and_select_target to load your data.")
+        csv_response = process_api_call("load_csv_and_select_target", event_stream, dataholder)
+        add_to_event_stream(event_stream, csv_response)
+
+        # If loading fails, exit the function early
+        if not csv_response.get("success", ""):
+            print_to_stream(event_stream, role = "bot",
+                            message = "Unable to load data, exiting.")
+            add_to_event_stream(event_stream, response)
+            return response
+
+    # Notify the user of the detected or loaded target variable
+    print_to_stream(event_stream, role = "bot", message = f"Your target variable is {dataholder.y.name}.")
+
+    # Present a brief explanation of classification vs regression
+    modeling_message = '\n'.join([
+        "There are two types of modeling: classification and regression.",
+        "Classification is when trying to predict a category or label (ex: Cats vs. Dogs).",
+        "Regression is when trying to predict within a continuous range of numbers (ex: Housing Prices)."
+    ])
+    print_to_stream(event_stream, role = "bot", message = modeling_message)
+
+    user_response = ""
+
+    # Prompt the user to select the modeling type until a valid input is given
+    while user_response not in ["c", "r"]:
+        if "exit" in user_response:
+            print_to_stream(event_stream, role = "bot", message = "User exit.")
+            add_to_event_stream(event_stream, response)
+            return response
+
+        print_to_stream(event_stream, role = "bot", message = "Enter R for regression or C for classification.")
+        user_response = input("Enter R or C. Enter EXIT to quit.").lower()
+        print_to_stream(event_stream, role = "user", message = user_response)
+
+    # User chose regression modeling
+    if user_response == "r":
+        print_to_stream(event_stream, role = "bot",
+                        message = "I will create a regression report for you, follow the rest of the instructions.")
+        return process_api_call("regression_report", event_stream, dataholder)
+
+    # User chose classification modeling
+    elif user_response == "c":
+        print_to_stream(event_stream, role = "bot",
+                        message = "I will create a classification report for you, follow the rest of the instructions.")
+        return process_api_call("classification_report", event_stream, dataholder)
 
 @register_function("load_csv_and_select_target")
 def load_csv_and_select_target(dataholder: DataHolder, event_stream: List[Dict[str, Any]],
@@ -175,7 +252,6 @@ def perform_regression(dataholder: DataHolder, event_stream: List[Dict[str, Any]
     Returns:
         Dict[str, Any]: The response dictionary indicating the result of the regression process.
     """
-
     # Set the task to regression
     dataholder.set_machine_learning_task(regression_flag = True)
     preprocessor = DataFramePreprocessor(dataholder)
@@ -190,7 +266,7 @@ def perform_regression(dataholder: DataHolder, event_stream: List[Dict[str, Any]
 
         while user_response not in ["y", "n"]:
             if "exit" in user_response:
-                print_to_stream(event_stream, role="bot", message="User exit.")
+                print_to_stream(event_stream, role = "bot", message = "User exit.")
                 add_to_event_stream(event_stream, response)
                 return response
 
@@ -208,30 +284,18 @@ def perform_regression(dataholder: DataHolder, event_stream: List[Dict[str, Any]
         # Handle user decision: perform classification
         if user_response == "y":
             print_to_stream(event_stream, role = "bot", message = "User chose to execute perform_classification.")
-            response["content"] = "perform_classification"
-            add_to_event_stream(event_stream, {
-                "role": "detect_api",
-                "content": "perform_classification",
-                "success": True
-            })
-            return perform_classification(dataholder, event_stream, response)
+            return process_api_call("perform_classification", event_stream, dataholder)
 
         # Handle user decision: reselect target column
         elif user_response == "n":
             print_to_stream(event_stream, role = "bot", message = "User chose to reselect target variable.")
-            add_to_event_stream(event_stream, {
-                "role": "detect_api",
-                "content": "load_csv_and_select_target",
-                "success": True
-            })
-            csv_response = {"role": "api_call", "content": "load_csv_and_select_target", "success": False}
-            csv_response = load_csv_and_select_target(dataholder, event_stream, response)
+            csv_response = process_api_call("load_csv_and_select_target", event_stream, dataholder)
             add_to_event_stream(event_stream, csv_response)
 
             if csv_response.get("success", ""):
                 print_to_stream(event_stream, role = "bot",
                                 message = "Target variable successfully reselected. Retrying perform_regression.")
-                return perform_regression(dataholder, event_stream, response)
+                return process_api_call("perform_regression", event_stream, dataholder)
             else:
                 print_to_stream(event_stream, role = "bot",
                                 message = "Unable to reselect target variable or reload csv.")
@@ -308,13 +372,7 @@ def perform_classification(dataholder: DataHolder, event_stream: List[Dict[str, 
         # Redirect to regression if user agrees
         if user_response == "y":
             print_to_stream(event_stream, role = "bot", message = "User chose to execute perform_regression.")
-            response["content"] = "perform_regression"
-            add_to_event_stream(event_stream, {
-                "role": "detect_api",
-                "content": "perform_regression",
-                "success": True
-            })
-            return perform_regression(dataholder, event_stream, response)
+            return process_api_call("perform_regression",event_stream, dataholder)
 
         # Ask if user wants to discretize the target variable
         elif user_response == "n":
@@ -356,21 +414,13 @@ def perform_classification(dataholder: DataHolder, event_stream: List[Dict[str, 
             elif user_response == "n":
                 # Reselect target column
                 print_to_stream(event_stream, role = "bot", message = "User chose to reselect target variable.")
-                add_to_event_stream(event_stream, {
-                    "role": "detect_api",
-                    "content": "load_csv_and_select_target",
-                    "success": True
-                })
-
-                csv_response = {"role": "api_call", "content": "load_csv_and_select_target", "success": False}
-                csv_response = load_csv_and_select_target(dataholder, event_stream, response)
+                csv_response = process_api_call("load_csv_and_select_target", event_stream, dataholder)
                 add_to_event_stream(event_stream, csv_response)
 
                 if csv_response.get("success", ""):
                     print_to_stream(event_stream, role = "bot",
                                     message = "Target variable successfully reselected. Retrying perform_classification.")
-                    add_to_event_stream(event_stream, response)
-                    return perform_classification(dataholder, event_stream, response)
+                    return process_api_call("perform_classification", event_stream, dataholder)
                 else:
                     print_to_stream(event_stream, role = "bot",
                                     message = "Unable to reselect target variable or reload CSV.")
@@ -415,6 +465,9 @@ def regression_report(dataholder: DataHolder, event_stream: List[Dict[str, Any]]
     Returns:
         Dict[str, Any]: A dictionary containing the success status and updated response content.
     """
+    # Alert user that the bot is generating statistics
+    print_to_stream(event_stream, role = "bot", message = "Generating regression statistics and residuals.")
+    
     # Create a model evaluator to access regression utilities
     evaluator = ModelEvaluator(dataholder)
 
@@ -423,116 +476,153 @@ def regression_report(dataholder: DataHolder, event_stream: List[Dict[str, Any]]
 
     # Generate and display the ANOVA summary table for the model
     anova = evaluator.plot_anova(coefficient_df, f_stat, f_p_value, aic, bic)
-    print_to_stream(event_stream, role = "bot", message = anova)
 
     # Compute residuals (true - predicted) for the test set
     residuals = dataholder.y_test - dataholder.predictions['test']
 
     # Visualize residuals vs. predicted values to diagnose model error behavior
     residual_plot = evaluator.plot_residuals(residuals)
-    plt.show()
+
+    # Alert the user that the bot is generating explanation
+    print_to_stream(event_stream, role = "bot", message = "Generating AI explanation.")
 
     # Build prompt for the language model to generate a plain-language performance summary
     prompt = f"""
     You are an expert data scientist tasked with evaluating a regression model using the following information:
-
+    
     - **Target Variable**: {dataholder.y.name}
-    - **Training R²**: {dataholder.scores["train"]["r2_score"]:.2f}
-    - **Testing R²**: {dataholder.scores["test"]["r2_score"]:.2f}
-    - **Training RMSE**: {dataholder.scores["train"]["rmse"]:.2g}
-    - **Testing RMSE**: {dataholder.scores["test"]["rmse"]:.2g}
+    - **Training R²**: {dataholder.regression_scores["train"]["r2_score"]:.2f}
+    - **Testing R²**: {dataholder.regression_scores["test"]["r2_score"]:.2f}
+    - **Training RMSE**: {dataholder.regression_scores["train"]["rmse"]:.2g}
+    - **Testing RMSE**: {dataholder.regression_scores["test"]["rmse"]:.2g}
     - **ANOVA table** (formatted as a string):
     {anova}
     - **Top 5 significant features**:
     {coefficient_df.head(5).to_string()}
     - **Predictions** (a list of predicted values for the test set):
     {dataholder.predictions["test"]}
-    - **Residuals** (calculated as the difference between actual values and predicted values):
+    - **Residuals** (calculated as the difference between actual and predicted values):
     {residuals}
-
+    
     ---
     
     ### Instructions:
     
-    - Use Markdown format with section headers in all caps using header level 5 ("#####").
-    - Begin each section on a new line. Do not write content on the same line as the header.
-    - Use **active voice** and explain all technical terms in **plain, accessible language** for a reader with no
-      background in statistics or machine learning.
-    - Focus especially on explaining what **R²**, **RMSE**, **overfitting**, **underfitting**, **residual plots**, and
-      each term in the ANOVA table mean.
-    - Explain how to interpret the differences between training and testing scores.
-    - Round all numeric values to **2 decimal places**, and use **commas for thousands separators**.
-      For values < 0.001 or > 10,000, use **scientific notation**.
-    - Interpret how well the model is generalizing based on the scores.
-    - When discussing features, mention the **coefficient** and **p-value** (if provided),
-      and explain what a significant feature means in context.
-
+    - Use **Markdown format** with all section headers in ALL CAPS using header level 5 (`#####`).
+    - Each header should be followed by a **line break**, then the content should begin on the next line.
+    - Write in an **active voice**, with a clear and engaging tone.
+    - All technical terms must be explained in **plain English** as if the reader has **no background** in statistics or ML.
+    - Prioritize clarity, context, and interpretation.
+    - Round all numeric values to **2 decimal places**, use **commas as thousands separators**, and for values less than 0.001 or greater than 10,000, use **scientific notation**.
+    - Help the reader **understand how to evaluate the model**, not just state metrics.
+    - When discussing features, mention **coefficient** and **p-value** (if available), and explain the real-world implication of each feature.
+    
     ---
     
     ### Required Sections:
-
-    **PREDICTION TARGET**  
-    Briefly explain what the model is trying to predict, based on the target variable `{dataholder.y.name}`.  
-    Describe in simple terms what this variable represents and why it might be important to forecast it accurately.
-
-    **METRIC EXPLANATIONS**  
-    Explain what R² (coefficient of determination) and RMSE (root mean squared error) measure.  
-    Describe what high or low values mean and how to interpret them in a regression context.  
-    Explain overfitting and underfitting in simple terms, and describe how the difference between
-    training and testing scores helps detect these.
-
-    **OVERFITTING OR UNDERFITTING?**  
-    Compare training and testing R² and RMSE.  
-    Explain whether the model is overfitting, underfitting, or performing appropriately.  
-    Support your conclusion with the numerical values and differences.
-
-    **ANOVA TABLE OVERVIEW**  
-    Explain what each column in the ANOVA table means
-    (e.g., degrees of freedom, sum of squares, mean square, F-statistic, p-value).  
-    Interpret the table as a whole: What does it tell us about the overall significance of the model?
-
-    **SIGNIFICANT FEATURES ANALYSIS**  
-    List and explain the top 5 most significant features using this format:  
-    "Feature Name (coefficient = X.XX, p-value = Y.YY): Explanation of its importance and how it influences the target."  
-    For one-hot encoded features (e.g., with underscores and capital letters or numbers),
-    explain that they are binary indicators.
-
-    **RESIDUAL PLOT EVALUATION**  
-    Explain how to evaluate the residual plot and what insights it provides.  
-    Describe the significance of the following characteristics:  
-      - **Randomness**: Residuals should appear randomly scattered around zero if the model is a good fit.  
-      - **Patterns**: A pattern in the residuals (e.g., a curve or systematic structure) suggests the model is not
-        capturing some underlying relationship in the data.  
-      - **Homoscedasticity**: Residuals should have constant variance (not funnel-shaped or widening/narrowing).  
-      - **Outliers**: Look for residuals that are far from the zero line. Outliers may indicate influential data points
-        or errors in predictions.  
-      - **Normality**: Ideally, residuals should follow a normal distribution (though this is not a strict requirement).
-
-    **KEY INSIGHTS FROM RESIDUALS AND PREDICTIONS**  
-    Provide a summary of the **residuals** and **predictions** with the following insights:  
-      - **Spread of Residuals**: Are the residuals randomly distributed around zero or
-        do they show any specific pattern (e.g., a funnel shape, curve, etc.)?  
-      - **Outliers**: Are there any significant outliers in the residuals that could indicate
-        problematic predictions or data points?  
-      - **Variance**: Do the residuals seem to have constant variance (homoscedasticity),
-        or do they exhibit increasing or decreasing variance (heteroscedasticity)?  
-      - **Prediction Accuracy**: How close are the residuals to zero? Does this indicate
-        good prediction accuracy or suggest areas for improvement?
-
-    **MODEL RATING**  
-    Give an overall performance rating using this format:  
+    
+    ##### PREDICTION TARGET  
+    Explain what the model is predicting, based on the target variable `{dataholder.y.name}`.  
+    Why is this prediction useful or important?
+    
+    ##### METRIC EXPLANATIONS  
+    Explain what **R²** (coefficient of determination) and **RMSE** (root mean squared error) represent.  
+    Clarify what high or low values imply in terms of model performance.  
+    Define **overfitting** and **underfitting**, and describe how the difference between training and testing scores reveals these problems.
+    
+    ##### OVERFITTING OR UNDERFITTING?  
+    Use the provided scores to determine if the model is overfitting, underfitting, or well-generalized.  
+    Support your answer with numerical comparisons and interpretation.
+    
+    ##### ANOVA TABLE OVERVIEW  
+    Explain what each ANOVA column means:  
+      - Degrees of Freedom  
+      - F-statistic  
+      - p-value  
+    Then interpret the ANOVA table as a whole: Does it suggest the model has statistically significant predictive power?
+    
+    ##### SIGNIFICANT FEATURES ANALYSIS  
+    List and explain the top 5 most significant features in the format:  
+    "**Feature Name** (coefficient = X.XX, p-value = Y.YY): Explanation."  
+    Clarify what it means for a feature to be significant.  
+    Note: One-hot encoded features (e.g., containing underscores and capital letters or numbers) are binary and should be interpreted as on/off flags.
+    
+    ##### RESIDUAL PLOT EVALUATION  
+    Explain how a residual plot is used to evaluate model performance.  
+    Discuss the following characteristics:  
+      - **Randomness**: Are residuals randomly scattered around zero?  
+      - **Patterns**: Do residuals form any systematic shape?  
+      - **Homoscedasticity**: Is the variance constant?  
+      - **Outliers**: Are there any extreme residuals that suggest poor predictions?  
+      - **Normality**: Do residuals roughly follow a normal distribution?
+    
+    ##### KEY INSIGHTS FROM RESIDUALS AND PREDICTIONS  
+    Summarize key findings based on residuals and predictions:  
+      - Are residuals evenly distributed?  
+      - Are there signs of heteroscedasticity or other patterns?  
+      - Are the predictions accurate, or do they show large errors?  
+      - Do the residuals suggest systematic problems?
+    
+    ##### MODEL RATING  
+    Provide a final rating in this format:  
     **"X / 10"**  
-    Base your score on model fit, generalization, and statistical significance of features.  
-    Briefly explain your reasoning.
+    Explain your score based on:  
+      - Model fit  
+      - Generalization performance  
+      - Statistical significance of features  
+      - Prediction quality and residual behavior
     """
 
     # Generate and display the Markdown summary using the language model
     judge_eval = evaluator.judge.call_llama(prompt = prompt, save_history = False)
-    display(Markdown(judge_eval))
 
-    # Mark function completion successfully in the event stream
+    # Save the PDF report if user has requested it
+    if dataholder.save_pdf:
+        # Use default save path if an empty string was provided
+        if not dataholder.save_path:
+            dataholder.save_path = "report.pdf"
+        save_status = evaluator.save_regression_report(
+            anova,
+            residual_plot,
+            judge_eval,
+            output_path = dataholder.save_path
+        )
+
+        plt.close('all')
+
+        # Report success or failure to save PDF
+        if save_status:
+            print_to_stream(event_stream, role = "bot", message = f"Successfully saved pdf at {dataholder.save_path}")
+        else:
+            print_to_stream(event_stream, role = "bot", message = f"Unable to save pdf at {dataholder.save_path}")
+            add_to_event_stream(event_stream, response)
+            return response
+    else:
+        # Show evaluation report inline if PDF saving is not enabled
+        print_to_stream(event_stream, role = "bot", message = anova)
+        plt.show()
+        display(Markdown(judge_eval))
+
+    # Prompt user whether to clear the dataholder for further processing
+    print_to_stream(event_stream, role = "bot",
+                    message = "Would you like to clear stored data? Enter Y or N. (Defaults to N)")
+
+    user_response = input("Enter Y or N.").lower()
+
+    # If specified, clear the event history from the dataholder
+    if user_response == "y":
+        add_to_event_stream(event_stream, {
+                        "role": "detect_api",
+                        "content": "clear_history",
+                        "success": True
+        })
+    
+        clear_history_response = {"role": "api_call", "content": "clear_history", "success": False}
+        clear_history_response = clear_history(dataholder, event_stream, clear_history_response)
+        add_to_event_stream(event_stream, clear_history_response)
+    
+    # Update and return final response
     add_to_event_stream(event_stream, response, success = True)
-
     return response
 
 @register_function("classification_report")
@@ -541,7 +631,7 @@ def classification_report(dataholder: DataHolder, event_stream: List[Dict[str, A
     """
     Executes a classification evaluation workflow by computing performance metrics, visualizing confusion matrices,
     and generating a comprehensive model analysis using a language model.
-    
+
     Args:
         dataholder (DataHolder): Object that contains the dataframe, target variable, model predictions,
             and performance metrics for both training and testing sets.
@@ -551,102 +641,170 @@ def classification_report(dataholder: DataHolder, event_stream: List[Dict[str, A
     Returns:
         Dict[str, Any]: A dictionary containing the success flag and updated response content.
     """
-    # Create a model evaluator for classification utilities and visualization
+    # Alert user that the bot is generating visuals
+    print_to_stream(event_stream, role = "bot", message = "Generating report visuals, this may take some time.")
+    
+    # Instantiate the evaluator to access classification metrics, visualizations, and SHAP utilities
     evaluator = ModelEvaluator(dataholder)
 
-    # Compute confusion matrix on the test set
+    # Generate a confusion matrix using test predictions
     test_confusion_matrix = confusion_matrix(
         dataholder.y_test,
         dataholder.predictions["test"]
     )
 
-    # Plot and display the training and testing confusion matrices
-    confusion_matrices = evaluator.plot_confusion_matrices();
-   
+    # Plot both train and test confusion matrices
+    confusion_matrices = evaluator.plot_confusion_matrices()
 
-    # Construct a detailed evaluation prompt for the language model
+    # Retrieve model metadata
+    model_name = evaluator.model_name
+    target_variable = dataholder.y.name
+
+    # Generate ROC curve plot and AUC score
+    roc_curve, roc_auc_score = evaluator.plot_roc_curve()
+
+    # Generate SHAP summary plots and retrieve top SHAP features
+    shap_plots, top_avg_scores, top_max_scores = evaluator.shap_summary_plot()
+
+    # Format SHAP values into readable strings for the report prompt
+    average_shap_values_string = '\n'.join([
+        f"Feature: {feature}, Score: {score}" for feature, score in top_avg_scores
+    ])
+    max_shap_values_string = '\n'.join([
+        f"Feature: {feature}, Score: {score}" for feature, score in top_max_scores
+    ])
+
+    # Alert the user that the bot is generating explanation
+    print_to_stream(event_stream, role = "bot", message = "Generating AI explanation.")
+
+    # Compose prompt for LLM-based model evaluation
     prompt = f"""
-    You are an expert data scientist tasked with evaluating the results of a classification model.
+    You are a senior machine learning analyst. Evaluate the performance of a classification model using the information provided below.
     
-    Use the following performance metrics and confusion matrix data to assess how well the model performs and
-    whether it is overfitting:
-    
-    - **Training accuracy**: {dataholder.scores['train']['accuracy']}
-    - **Testing accuracy**: {dataholder.scores['test']['accuracy']}
-    - **Training precision**: {dataholder.scores['train']['precision']}
-    - **Testing precision**: {dataholder.scores['test']['precision']}
-    - **Training recall**: {dataholder.scores['train']['recall']}
-    - **Testing recall**: {dataholder.scores['test']['recall']}
-    - **Training F1 score**: {dataholder.scores['train']['f1_score']}
-    - **Testing F1 score**: {dataholder.scores['test']['f1_score']}
-    - **Testing confusion matrix (rows = true labels, columns = predicted labels)**:  
+    ### Input Information:
+    - **Model type**: {model_name}
+    - **Target variable**: {target_variable}
+    - **Confusion Matrix (rows = true labels, columns = predicted labels)**:  
     {test_confusion_matrix}
-
+    
+    - **ROC AUC score**: {roc_auc_score:.2f}
+    - **Average SHAP values per feature**:  
+    {average_shap_values_string}
+    
+    - **Maximum SHAP value per feature**:  
+    {max_shap_values_string}
+    
+    - **Classification scores**:  
+    - **Training accuracy**: {dataholder.classification_scores['train']['accuracy']:.2f}
+    - **Testing accuracy**: {dataholder.classification_scores['test']['accuracy']:.2f}
+    - **Training precision**: {dataholder.classification_scores['train']['precision']:.2f}
+    - **Testing precision**: {dataholder.classification_scores['test']['precision']:.2f}
+    - **Training recall**: {dataholder.classification_scores['train']['recall']:.2f}
+    - **Testing recall**: {dataholder.classification_scores['test']['recall']:.2f}
+    - **Training F1 score**: {dataholder.classification_scores['train']['f1_score']:.2f}
+    - **Testing F1 score**: {dataholder.classification_scores['test']['f1_score']:.2f}
     ---
     
-    ### Formatting Instructions:
-
+    ### Instructions:
     - Use Markdown format with section headers in all caps using header level 5 ("#####").
-    - Start each section on a new line. Do not write content on the same line as the header.
-    - Explain what **accuracy**, **precision**, **recall**, and **F1 score** mean,
-        including how macro-averaging works in a multi-class setting.
-    - Explain what a **confusion matrix** represents in the context of multi-class classification.
-    - Interpret the confusion matrix: Identify which classes are being confused most often,
-        and discuss what that might imply.
-    - Use **active voice** and **layman-friendly language** throughout.
-    - Round all numeric values to **2 decimal places**.
-    - Focus on explaining whether the model is **overfitting**, **underfitting**, or performing well by comparing
-        training vs. testing scores.
-
+    - Begin each section on a new line.
+    - Use **active voice** and explain technical terms in **plain, accessible language** for non-experts.
+    - Round all numeric values to **2 decimal places** and use **commas for thousands separators**.
+    - Explain how to interpret each metric and visual (e.g., confusion matrix, ROC curve, SHAP values).
+    - Use examples or analogies where helpful.
+    
     ---
     
     ### Required Sections:
-
-    **METRIC EXPLANATIONS**  
-    Explain in simple terms what accuracy, precision, recall, and F1 score each measure.  
-    Clarify that **macro averaging** treats each class equally, regardless of class imbalance.  
-    Also define what a multi-class confusion matrix is and how it should be interpreted.
-
-    **CONFUSION MATRIX INSIGHTS**  
-    Use the matrix to identify which specific classes the model most frequently misclassifies.  
-    Describe whether these misclassifications are serious or acceptable depending on how far off the
-    predicted classes are from the true ones.  
-    If applicable, note whether certain classes are consistently underrepresented in predictions.
-
-    **OVERFITTING EVALUATION**  
-    Compare the training and testing scores across all metrics.  
-    If the model performs significantly better on the training set than the test set, it may be overfitting.  
-    Explain your conclusion clearly using the provided numbers.
-
+    
+    **PREDICTION GOAL**  
+    Briefly explain what the model is predicting based on the target variable `{target_variable}`.  
+    Explain why it's important to get this prediction right.
+    
+    **OVERFITTING OR UNDERFITTING**  
+    Compare training and testing accuracy, precision, recall, and F1 scores.  
+    Explain whether the model is overfitting, underfitting, or performing well in generalization.  
+    Highlight any major discrepancies.
+    
+    **CONFUSION MATRIX INTERPRETATION**  
+    Interpret the confusion matrix:  
+      - Explain true positives, false positives, false negatives, and true negatives.  
+      - Mention if there’s class imbalance or a tendency to favor one class.  
+      - Point out if certain types of errors (e.g., false negatives) are more critical in this context.  
+    If it is a **multi-class confusion matrix**, walk through the matrix row by row or class by class to identify
+    which classes are well-predicted and which are confused with others.
+    
+    **ROC CURVE & AUC SCORE**  
+    Explain what the ROC curve represents, and what the AUC (Area Under the Curve) score means.  
+    Give a plain-English interpretation of the model’s ability to distinguish between classes based on the ROC AUC score.
+    
+    **SHAP VALUE INTERPRETATION**  
+    You are given the average and maximum SHAP values for each feature.  
+    Explain:  
+      - What SHAP values mean in terms of feature importance  
+      - What the **average SHAP value** tells us (overall importance across all predictions)  
+      - What the **maximum SHAP value** reveals (how influential a feature can be in a single prediction)  
+    Identify the top 3–5 features by SHAP values and describe how they influence predictions.
+    
+    **KEY INSIGHTS & RECOMMENDATIONS**  
+    Summarize the model’s overall behavior and performance.  
+    Highlight anything that might require attention (e.g., bias, weak generalization, heavy reliance on one feature).  
+    Offer suggestions for improving model performance (e.g., collecting more data, rebalancing classes, tuning thresholds).
+    
     **MODEL RATING**  
-    Provide an overall rating of the model’s performance using this format:  
-    **"X / 10"**  
-    Base your score on generalization ability, class balance, and how well the model performs across metrics.  
-    Be fair and explain your reasoning briefly.
+    Give a rating in this format:  
+    **"Rating (X / 10)"**  
+    Base the score on generalization performance, interpretability, and reliability of the model's decisions.
     """
 
-    # Generate the LLM-based model evaluation
+    # Generate human-readable model evaluation using LLM
     judge_eval = evaluator.judge.call_llama(prompt = prompt, save_history = False)
 
-    # Save the PDF if flag is set
+    # Save the PDF report if user has requested it
     if dataholder.save_pdf:
+        # Use default save path if an empty string was provided
+        if not dataholder.save_path:
+            dataholder.save_path = "report.pdf"
         save_status = evaluator.save_classification_report(
             confusion_matrices,
+            roc_curve,
+            shap_plots,
             judge_eval,
             output_path = dataholder.save_path
         )
-        # Print whether the report was successfully saved to a PDF
+
+        plt.close('all')
+
+        # Report success or failure to save PDF
         if save_status:
             print_to_stream(event_stream, role = "bot", message = f"Successfully saved pdf at {dataholder.save_path}")
         else:
             print_to_stream(event_stream, role = "bot", message = f"Unable to save pdf at {dataholder.save_path}")
             add_to_event_stream(event_stream, response)
             return response
-    # Otherwise, display report inline
     else:
+        # Show evaluation report inline if PDF saving is not enabled
         plt.show()
         display(Markdown(judge_eval))
-        
-    # Finalize the response
+
+    # Prompt user whether to clear the dataholder for further processing
+    print_to_stream(event_stream, role = "bot",
+                    message = "Would you like to clear stored data? Enter Y or N. (Defaults to N)")
+
+    user_response = input("Enter Y or N.").lower()
+
+    # If specified, clear the event history from the dataholder
+    if user_response == "y":
+        add_to_event_stream(event_stream, {
+                        "role": "detect_api",
+                        "content": "clear_history",
+                        "success": True
+        })
+    
+        clear_history_response = {"role": "api_call", "content": "clear_history", "success": False}
+        clear_history_response = clear_history(dataholder, event_stream, clear_history_response)
+        add_to_event_stream(event_stream, clear_history_response)
+    
+    # Update and return final response
     add_to_event_stream(event_stream, response, success = True)
     return response
