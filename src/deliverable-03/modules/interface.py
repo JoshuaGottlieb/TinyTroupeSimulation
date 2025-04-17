@@ -47,7 +47,7 @@ class ModelBot:
         print_to_stream(self.event_stream, role = "system",
                         message = "This agent is powered by Llama 3 and is not a replacement for a human data scientist.")
         print_to_stream(self.event_stream, role = "system",
-                        message = "To get a list of functions available to this agent, type \"list functions\".")
+                        message = "To get a list of functions available to this agent, type \"help\".")
         print_to_stream(self.event_stream, role = "system",
                         message = "If you want to restart the chat, type \"clear data\".")
         print_to_stream(self.event_stream, role = "system",
@@ -75,12 +75,14 @@ class ModelBot:
                 api_result = process_api_call(api_name, self.event_stream, self.dataholder)
                 if api_result["success"]:
                     print_to_stream(self.event_stream, role = "bot",
-                                    message = "Successfully processed API call. How else may I help you?")
+                                    message = f"Successfully processed API call. How else may I help you?")
                 else:
                     print_to_stream(self.event_stream, role = "bot",
                                     message = f"Something went wrong trying to execute {api_name}, so please try again.")
             else:
                 # No API detected; fallback to chatbot response
+                print_to_stream(self.event_stream, role = "bot",
+                                message = f"No API call detected, defaulting to LLM response.")
                 bot_response = self.bot.call_llama(prompt = prompt, save_history = False)
                 print_to_stream(self.event_stream, role = "bot", message = bot_response)
 
