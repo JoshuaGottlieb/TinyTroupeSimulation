@@ -1,0 +1,235 @@
+{
+    "api_help": {
+        "trigger_word": [
+            "help",
+            "show api",
+            "api help",
+            "list functions",
+            "show functions",
+            "api summary",
+            "list endpoints",
+            "show endpoints",
+            "available functions",
+            "function list",
+            "api overview",
+            "display api"
+        ],
+        "sample_payload": {},
+        "prerequisite": "null",
+        "description": {
+            "function": "Displays a summary of all available API functions, including their name, prerequisites, trigger phrases, description, and user input expectations.",
+            "input": "None"
+        },
+        "error_message": "",
+        "alternative": ""
+    },
+    "clear_history": {
+        "trigger_word": [
+            "clear history",
+            "reset history",
+            "delete history",
+            "erase history",
+            "remove history",
+            "clear data",
+            "reset data",
+            "delete data",
+            "start fresh",
+            "forget everything",
+            "wipe history"
+        ],
+        "sample_payload": {},
+        "prerequisite": "null",
+        "description": {
+            "function": "Clears all stored data and model state from the session, except for persistent metadata.",
+            "input": "None"
+        },
+        "error_message": "",
+        "alternative": ""
+    },
+    "select_model": {
+        "trigger_word": [
+            "create model",
+            "select model",
+            "create report",
+            "generate report",
+            "make report",
+            "make model",
+            "choose model",
+            "pick model",
+            "model selection",
+            "set model",
+            "change model",
+            "switch model",
+            "pick algorithm",
+            "select algorithm",
+            "choose algorithm"
+        ],
+        "sample_payload": {},
+        "prerequisite": "null",
+        "description": {
+            "function": "",
+            "input": "None"
+        },
+        "error_message": "",
+        "alternative": ""
+    },
+    "load_csv_and_select_target": {
+        "trigger_word": [
+            "upload csv",
+            "load dataset",
+            "import csv",
+            "read csv",
+            "load csv",
+            "open csv",
+            "process csv",
+            "parse csv",
+            "use csv",
+            "access csv",
+            "upload file",
+            "read file",
+            "open file",
+            "load file"
+        ],
+        "sample_payload": {
+            "csv_path": "str"
+        },
+        "prerequisite": "null",
+        "description": {
+            "function": "Loads a user-specified csv file. Prompts the user to select a column to use denote as a target variable for further modeling.",
+            "input": "csv_path: A string denoting the relative file path used to locate the csv file."
+        },
+        "error_message": "Unable to load csv, please check file name spelling and that the file exists.",
+        "alternative": ""
+    },
+    "perform_regression": {
+        "trigger_word": [
+            "run regression",
+            "do regression",
+            "perform regression",
+            "linear regression",
+            "regression analysis",
+            "start regression",
+            "train regression",
+            "regression model",
+            "apply regression",
+            "polynomial regression",
+            "elastic net"
+        ],
+        "sample_payload": {
+            "cleaning_strictness": "int",
+            "hyperparameter_tuning": "bool",
+            "extended_models": "bool"
+        },
+        "prerequisite": {
+            "data": {
+                "X": "pd.DataFrame",
+                "y": "pd.Series"
+            },
+            "function": "load_csv_and_select_target",
+            "reason": "CSV has not been loaded."
+        },
+        "description": {
+            "function": "Performs regression analysis on the dataset, including validation, preprocessing, model fitting, and handling of user input in case of task misclassification.",
+            "input": "cleaning_strictness: 0, 1, or 2, denoting the strictness to apply during preprocessing.\n\t- 0: Basic cleaning (only imputation).\n\t- 1: Medium strictness (prune outliers and impute).\n\t- 2: High strictness (detect and relabel outliers in addition to pruning and imputation).\nhyperparameter_tuning: 0 (False) or 1 (True), denoting whether to try to tune models.\nextended_models: 0 (False) or 1 (True), denoting whether to try extra models with higher complexity.\n\t- 0: Only Linear Regression is tested.\n\t- 1: Linear Regresion, Polynomial (degree 3) Lasso Regresion, and ElasticNet Regression are tested."
+        },
+        "error_message": "Unable to perform regression, check data for possible errors or try again.",
+        "alternative": ""
+    },
+    "perform_classification": {
+        "trigger_word": [
+            "run classification",
+            "do classification",
+            "perform classification",
+            "classification task",
+            "start classification",
+            "train classifier",
+            "build classifier",
+            "fit classifier",
+            "predict classes",
+            "classification model",
+            "apply classification",
+            "logistic regression",
+            "decision tree",
+            "decision trees",
+            "random forest"
+        ],
+        "sample_payload": {
+            "cleaning_strictness": "int",
+            "hyperparameter_tuning": "bool",
+            "extended_models": "bool"
+        },
+        "prerequisite": {
+            "data": {
+                "X": "pd.DataFrame",
+                "y": "pd.Series"
+            },
+            "function": "load_csv_and_select_target",
+            "reason": "CSV has not been loaded."
+        },
+        "description": {
+            "function": "Executes a classification workflow by validating the target variable, preprocessing the data, and training a classification model. Includes logic to handle cases where the data might be better suited for regression or discretization.",
+            "input": "cleaning_strictness: 0, 1, or 2, denoting the strictness to apply during preprocessing.\n\t- 0: Basic cleaning (only imputation).\n\t- 1: Medium strictness (prune outliers and impute).\n\t- 2: High strictness (detect and relabel outliers in addition to pruning and imputation).\nhyperparameter_tuning: 0 (False) or 1 (True), denoting whether to try to tune models.\nextended_models: 0 (False) or 1 (True), denoting whether to try extra models with higher complexity.\n\t- 0: Only Logistic Regression is tested.\n\t- 1: Logistic Regression, Decision Trees, and Random Forests are tested."
+        },
+        "error_message": "Unable to perform classification, check data for possible errors or try again.",
+        "alternative": ""
+    },
+    "regression_report": {
+        "trigger_word": [
+            "evaluate regression",
+            "regression summary",
+            "report regression",
+            "analyze regression",
+            "test regression",
+            "show regression",
+            "regression results"
+        ],
+        "sample_payload": {
+            "save_pdf": "bool",
+            "save_path": "str"
+        },
+        "prerequisite": {
+            "data": {
+                "predictions": "dict",
+                "regression_scores": "dict"
+            },
+            "function": "perform_regression",
+            "reason": "Regression model has not been fit."
+        },
+        "description": {
+            "function": "Evaluates a trained regression model using statistical analysis, diagnostic visualizations, and a natural language explanation generated by a language model.",
+            "input": "save_pdf: 0 (False) or 1 (True), denoting whether to save the report to a pdf.\nsave_path: A string denoting the relative file path where to save the pdf."
+        },
+        "error_message": "Unable to generate regression report. Perhaps you meant to generate a classification report?",
+        "alternative": "classification_report"
+    },
+    "classification_report": {
+        "trigger_word": [
+            "evaluate classifier",
+            "classifier report",
+            "report classification",
+            "classification summary",
+            "analyze classifier",
+            "test classifier",
+            "show classification",
+            "classification results"
+        ],
+        "sample_payload": {
+            "save_pdf": "bool",
+            "save_path": "str"
+        },
+        "prerequisite": {
+            "data": {
+                "predictions": "dict",
+                "classification_scores": "dict"
+            },
+            "function": "perform_classification",
+            "reason": "Classification model has not been fit."
+        },
+        "description": {
+            "function": "Executes a classification evaluation workflow by computing performance metrics, visualizing confusion matrices, and generating a comprehensive model analysis using a language model.",
+            "input": "save_pdf: 0 (False) or 1 (True), denoting whether to save the report to a pdf.\nsave_path: A string denoting the relative file path where to save the pdf."
+        },
+        "error_message": "Unable to generate classification report. Perhaps you meant to generate a regression report?",
+        "alternative": "regression_report"
+    }
+}

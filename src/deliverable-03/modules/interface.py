@@ -8,7 +8,7 @@ from .dataholder import *
 from .helper import *
 
 # Path to metadata file containing dataset structure, label types, etc.
-metadata_filepath = os.path.join(os.path.dirname(__file__), "metadata.json")
+metadata_filepath = os.path.join(os.path.dirname(__file__), "metadata/metadata.json")
 
 class ModelBot:
     """
