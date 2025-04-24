@@ -1,4 +1,5 @@
 # Absolute imports
+import numpy as np
 import pandas as pd
 
 # Third-party imports
@@ -71,7 +72,7 @@ class DataHolder:
             bool: True if the type matches the expected type, otherwise False.
         """
         value = self.get(parameter)
-        return type(value).__name__ == correct_type
+        return type(value) == correct_type
 
     def validate_parameters(self, parameters: Dict[str, str]) -> List[str]:
         """
@@ -178,30 +179,6 @@ class DataHolder:
             pd.DataFrame: The DataFrame stored within the object.
         """
         return self.df
-
-    def get_train_test(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-        """
-        Returns the training and testing datasets.
-
-        Returns:
-            tuple: A tuple containing:
-                - X_train (pd.DataFrame): Features for the training set.
-                - X_test (pd.DataFrame): Features for the testing set.
-                - y_train (pd.Series): Target values for the training set.
-                - y_test (pd.Series): Target values for the testing set.
-        """
-        return self.X_train, self.X_test, self.y_train, self.y_test
-
-    def set_machine_learning_task(self, regression_flag: bool) -> None:
-        """
-        Sets the machine learning task type.
-
-        Args:
-            regression_flag (bool): Whether the task is regression (True) or classification (False).
-        """
-        self.regression_flag = regression_flag
-
-        return
 
     def load_dataframe(self) -> bool:
         """

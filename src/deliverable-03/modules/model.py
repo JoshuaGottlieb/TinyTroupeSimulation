@@ -100,7 +100,7 @@ class AutomaticModeler:
     
         return
 
-    def build_pipeline(self, model: sklearn.pipeline.Pipeline) -> sklearn.pipeline.Pipeline:
+    def build_pipeline(self, model: Pipeline) -> Pipeline:
         """
         Constructs a complete machine learning pipeline by combining preprocessing steps with the provided model.
     
@@ -108,10 +108,10 @@ class AutomaticModeler:
         polynomial feature expansion for numeric columns with more than two unique values.
     
         Args:
-            model (sklearn.pipeline.Pipeline): A scikit-learn pipeline that includes the model step.
+            model (Pipeline): A scikit-learn pipeline that includes the model step.
     
         Returns:
-            sklearn.pipeline.Pipeline: A full pipeline with preprocessing and modeling steps.
+            Pipeline: A full pipeline with preprocessing and modeling steps.
         """
         # Get the name of the model from the first step of the passed-in pipeline
         name = model.steps[0][0]
@@ -161,15 +161,15 @@ class AutomaticModeler:
     
         return pipeline
     
-    def get_gridsearch(self, pipeline: sklearn.pipeline.Pipeline) -> sklearn.model_selection.GridSearchCV:
+    def get_gridsearch(self, pipeline: Pipeline) -> GridSearchCV:
         """
         Returns a GridSearchCV object for hyperparameter tuning based on the model in the given pipeline.
     
         Args:
-            pipeline (sklearn.pipeline.Pipeline): A scikit-learn pipeline with a named model step.
+            pipeline (Pipeline): A scikit-learn pipeline with a named model step.
     
         Returns:
-            sklearn.model_selection.GridSearchCV: A GridSearchCV object configured with hyperparameter ranges.
+            GridSearchCV: A GridSearchCV object configured with hyperparameter ranges.
         """
         # Get the name of the model from the first step of the pipeline
         name = list(pipeline.named_steps["estimator"].named_steps.keys())[0]

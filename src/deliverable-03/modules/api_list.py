@@ -255,7 +255,7 @@ def perform_regression(dataholder: DataHolder, event_stream: List[Dict[str, Any]
         Dict[str, Any]: The response dictionary indicating the result of the regression process.
     """
     # Set the task to regression
-    dataholder.set_machine_learning_task(regression_flag = True)
+    dataholder.regression_flag = True
     preprocessor = DataFramePreprocessor(dataholder)
 
     # Validate if the target variable is suitable for regression
@@ -344,7 +344,7 @@ def perform_classification(dataholder: DataHolder, event_stream: List[Dict[str, 
     """
 
     # Set the task type to classification
-    dataholder.set_machine_learning_task(regression_flag = False)
+    dataholder.regression_flag = False
     preprocessor = DataFramePreprocessor(dataholder)
 
     # Validate if the target is categorical (suitable for classification)
@@ -522,12 +522,12 @@ def classification_report(dataholder: DataHolder, event_stream: List[Dict[str, A
     url = "http://localhost:8000/classification_report/"
 
     # Notify the user that data preparation has started
-    print_to_stream(event_stream, role="bot", message="Preparing data for report.")
+    print_to_stream(event_stream, role = "bot", message = "Preparing data for report.")
     payload = serialize_dataholder(dataholder)
 
     # Notify the user that the report generation request is being sent
-    print_to_stream(event_stream, role="bot", message="Creating report. This may take a while.")
-    post_response = requests.post(url, json=payload)
+    print_to_stream(event_stream, role = "bot", message = "Creating report. This may take a while.")
+    post_response = requests.post(url, json = payload)
 
     # Handle API response
     if post_response.status_code == 200:
@@ -539,11 +539,11 @@ def classification_report(dataholder: DataHolder, event_stream: List[Dict[str, A
     if dataholder.save_pdf:
         if not dataholder.save_path:
             dataholder.save_path = "report.pdf"  # Use default path if none specified
-        save_status = serialized_classification_report_to_pdf(report, output_path=dataholder.save_path)
+        save_status = serialized_classification_report_to_pdf(report, output_path = dataholder.save_path)
         if save_status:
-            print_to_stream(event_stream, role="bot", message=f"Successfully saved pdf at {dataholder.save_path}")
+            print_to_stream(event_stream, role = "bot", message = f"Successfully saved pdf at {dataholder.save_path}")
         else:
-            print_to_stream(event_stream, role="bot", message=f"Unable to save pdf at {dataholder.save_path}")
+            print_to_stream(event_stream, role = "bot", message = f"Unable to save pdf at {dataholder.save_path}")
             add_to_event_stream(event_stream, response)
             return response
     else:
@@ -551,5 +551,5 @@ def classification_report(dataholder: DataHolder, event_stream: List[Dict[str, A
         display_serialized_classification_report(report)
 
     # Update the response and return it
-    add_to_event_stream(event_stream, response, success=True)
+    add_to_event_stream(event_stream, response, success = True)
     return response

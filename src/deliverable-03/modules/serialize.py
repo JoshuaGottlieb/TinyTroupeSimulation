@@ -6,6 +6,7 @@ import traceback
 
 # Third-party library imports
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from bs4 import BeautifulSoup
 from IPython.display import Image as IPImage, Markdown, display
