@@ -1,13 +1,19 @@
-from .chatbot import *
-from .dataholder import *
+# Absolute imports
 import numpy as np
 import pandas as pd
 from difflib import SequenceMatcher
+
+# Local imports
+from .chatbot import *
+from .dataholder import *
+
+# Scikit-learn imports
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
-from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from typing import Tuple, Any, Dict, List
+
+# Typing imports
+from typing import List
 
 class DataFramePreprocessor:
     """

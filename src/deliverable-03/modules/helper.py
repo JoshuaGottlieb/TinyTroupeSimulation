@@ -1,9 +1,16 @@
+# Absolute imports
+import json
+import re
+
+# Third-party imports
+from collections.abc import Callable
+
+# Local imports
 from .chatbot import *
 from .dataholder import *
-from collections.abc import Callable
+
+# Typing imports
 from typing import Dict, Any, List
-import re
-import json
 
 # Initialize function registry for API calls
 function_registry = {}

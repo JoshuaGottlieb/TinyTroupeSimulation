@@ -1,8 +1,14 @@
-from .chatbot import *
-from .dataholder import *
+# Absolute imports
+import warnings
+from copy import deepcopy
 import numpy as np
 import pandas as pd
-import sklearn
+
+# Local imports
+from .chatbot import *
+from .dataholder import *
+
+# Scikit-learn imports
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 from sklearn.linear_model import LinearRegression, Lasso, ElasticNet, LogisticRegression
@@ -13,9 +19,6 @@ from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score, recall_score, precision_score, f1_score, roc_auc_score
 from sklearn.metrics import r2_score, root_mean_squared_error
 from sklearn.exceptions import ConvergenceWarning
-from typing import Any, Dict
-from copy import deepcopy
-import warnings
 
 warnings.filterwarnings("ignore", category = ConvergenceWarning)
 

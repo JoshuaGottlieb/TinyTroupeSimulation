@@ -1,26 +1,22 @@
-from .chatbot import *
-from .dataholder import *
+# Absolute imports
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
-from sklearn.pipeline import Pipeline
+
+# Third-party imports
 from sklearn.linear_model import LinearRegression, Lasso, ElasticNet
 from sklearn.metrics import confusion_matrix, roc_curve, roc_auc_score
 from sklearn.preprocessing import LabelBinarizer
-import statsmodels.api as sm
-import statsmodels.formula.api as smf
 import shap
-from IPython.display import display, Markdown
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, ListFlowable, ListItem, KeepTogether, Preformatted
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-import io
-from PIL import Image as PILImage
-import markdown
-from bs4 import BeautifulSoup
-from typing import Dict, Any, Tuple, List, Union, Sequence
+
+# Local imports
+from .chatbot import LlamaBot
+from .dataholder import DataHolder
+
+# Typing imports
+from typing import Tuple, List
 
 class ModelEvaluator():
     def __init__(self, dataholder: DataHolder):
@@ -198,7 +194,7 @@ class ModelEvaluator():
         df_resid = n_samples - p_features
         method = self.model_name.split("Regression")[0].strip().lower()
         title = f"{method.title()} Regression Results"
-        dependent_variable = self.dataholder.y.name
+        dependent_variable = self.dataholder.y_train.name
     
         # Set up layout constants
         lines = []
@@ -260,7 +256,8 @@ class ModelEvaluator():
         """
     
         # Convert predictions and residuals to NumPy arrays for processing
-        preds = np.array(self.dataholder.predictions['test'])
+        # preds = np.array(self.dataholder.predictions['test'])
+        preds = self.dataholder.predictions['test']
     
         # Calculate threshold for outlier detection (e.g., 3 standard deviations)
         std_resid = np.std(residuals)
@@ -563,255 +560,3 @@ class ModelEvaluator():
         plt.tight_layout(rect = [0, 0, 1, 0.95])
     
         return fig, top_avg_scores, top_max_scores
-
-    def figure_to_reportlab_image(self, fig: plt.Figure) -> Image:
-        """
-        Convert a matplotlib Figure to a ReportLab-compatible Image flowable
-        with automatic scaling to fit within a PDF page's width.
-    
-        Args:
-            fig (plt.Figure): A matplotlib figure object to convert.
-    
-        Returns:
-            reportlab.platypus.Image: A scaled ReportLab image ready for PDF rendering.
-        """
-        # Save the matplotlib figure to an in-memory buffer
-        buf = io.BytesIO()
-        fig.savefig(buf, format = 'png', bbox_inches = 'tight', dpi = 300)
-        buf.seek(0)
-    
-        # Open the image with PIL to get its original size
-        pil_image = PILImage.open(buf)
-        img_width, img_height = pil_image.size
-    
-        # Determine scaling factor to fit within letter-sized page (1-inch margins)
-        max_width = letter[0] - 72
-        scale = min(max_width / img_width, 1.0)
-        scaled_width = img_width * scale
-        scaled_height = img_height * scale
-    
-        # Return a ReportLab Image object with scaled dimensions
-        buf.seek(0)
-        return Image(buf, width = scaled_width, height = scaled_height)
-
-    def save_classification_report(self, confusion_matrices: plt.Figure, roc_curves: plt.Figure,
-                                   shap_values: plt.Figure, judge_eval: str, output_path: str) -> bool:
-        """
-        Generate a structured PDF report that includes:
-          - A disclaimer
-          - Visuals for the confusion matrix, ROC curves, and SHAP values
-          - A markdown-formatted evaluation section (headers, lists, tables)
-    
-        Args:
-            confusion_matrices (plt.Figure): Matplotlib figure for the confusion matrix.
-            roc_curves (plt.Figure): Matplotlib figure for the ROC curves.
-            shap_values (plt.Figure): Matplotlib figure for SHAP values.
-            judge_eval (str): Markdown-formatted evaluation/analysis text.
-            output_path (str): File path where the PDF report will be saved.
-    
-        Returns:
-            bool: True if the report is successfully saved; False otherwise.
-        """
-        try:
-            doc = SimpleDocTemplate(output_path, pagesize = letter)
-    
-            # Define base and custom styles
-            styles = getSampleStyleSheet()
-            custom_styles = {
-                "h1": ParagraphStyle("Heading1", parent = styles["Heading1"], fontSize = 16, spaceAfter = 10),
-                "h2": ParagraphStyle("Heading2", parent = styles["Heading2"], fontSize = 14, spaceAfter = 8),
-                "h3": ParagraphStyle("Heading3", parent = styles["Heading3"], fontSize = 12, spaceAfter = 6),
-                "h4": ParagraphStyle("Heading4", parent = styles["Heading4"], fontSize = 11, spaceAfter = 5),
-                "h5": ParagraphStyle("Heading5", parent = styles["Normal"], fontSize = 10,
-                                     spaceAfter = 4, fontName = "Helvetica-Bold"),
-                "p": styles["Normal"],
-                "ul": styles["Normal"]
-            }
-    
-            elements = []
-    
-            # Add disclaimer paragraph
-            disclaimer_text = (
-                "This model and explanation were generated by ModelBot, an agent designed to help non-technical "
-                "users perform basic machine learning modeling, powered by Llama 3. It is not "
-                "a replacement for a human data scientist, and there may be discrepancies and "
-                "inaccuracies within this report."
-            )
-            disclaimer_style = ParagraphStyle("Disclaimer", parent = styles["Normal"],
-                                              fontSize = 8, textColor = "gray", spaceAfter = 2)
-            elements.append(Paragraph(disclaimer_text, disclaimer_style))
-            elements.append(Spacer(1, 12))
-    
-            # --- Figures with headers, grouped with KeepTogether ---
-    
-            # Confusion Matrix Section
-            cm_section = KeepTogether([
-                # Paragraph("Confusion Matrix", custom_styles["h5"]),
-                self.figure_to_reportlab_image(confusion_matrices),
-                Spacer(1, 12)
-            ])
-            elements.append(cm_section)
-    
-            # ROC Curve Section
-            roc_section = KeepTogether([
-                # Paragraph("ROC Curves", custom_styles["h5"]),
-                self.figure_to_reportlab_image(roc_curves),
-                Spacer(1, 12)
-            ])
-            elements.append(roc_section)
-    
-            # SHAP Summary Section
-            shap_section = KeepTogether([
-                # Paragraph("SHAP Summary", custom_styles["h5"]),
-                self.figure_to_reportlab_image(shap_values),
-                Spacer(1, 12)
-            ])
-            elements.append(shap_section)
-    
-            # --- Markdown Evaluation Section ---
-            html = markdown.markdown(judge_eval, extensions = ["tables"])
-            soup = BeautifulSoup(html, 'html.parser')
-    
-            for tag in soup:
-                if tag.name in ["h1", "h2", "h3", "h4", "h5"]:
-                    elements.append(Paragraph(tag.get_text(), custom_styles[tag.name]))
-                    elements.append(Spacer(1, 6))
-                elif tag.name == "p":
-                    elements.append(Paragraph(tag.get_text(), custom_styles["p"]))
-                    elements.append(Spacer(1, 6))
-                elif tag.name == "ul":
-                    bullets = [
-                        ListItem(Paragraph(li.get_text(), custom_styles["ul"]))
-                        for li in tag.find_all("li")
-                    ]
-                    elements.append(ListFlowable(bullets, bulletType = 'bullet'))
-                    elements.append(Spacer(1, 6))
-                elif tag.name == "table":
-                    rows = []
-                    for row in tag.find_all("tr"):
-                        cells = [cell.get_text(strip = True) for cell in row.find_all(["th", "td"])]
-                        rows.append(cells)
-    
-                    table = Table(rows, hAlign = 'LEFT')
-                    table.setStyle(TableStyle([
-                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                    ]))
-                    elements.append(table)
-                    elements.append(Spacer(1, 12))
-    
-            # Final PDF build
-            doc.build(elements)
-            return True
-    
-        except Exception as e:
-            print("Error saving classification report:", e)
-            traceback.print_exc()
-            return False
-
-    def save_regression_report(self, anova_table: str, residual_plot: plt.Figure,
-                               judge_eval: str, output_path: str) -> bool:
-        """
-        Generate a structured regression PDF report that includes:
-          - A disclaimer
-          - An ANOVA table displayed as preformatted plain text
-          - A residual plot (matplotlib figure)
-          - A markdown-formatted evaluation section (supports headers, tables, lists)
-    
-        Args:
-            anova_table (str): A plain-text string representing the ANOVA table.
-            residual_plot (plt.Figure): A matplotlib figure showing the residuals.
-            judge_eval (str): Markdown-formatted analysis or commentary.
-            output_path (str): File path where the PDF report will be saved.
-    
-        Returns:
-            bool: True if the report was successfully saved, False otherwise.
-        """
-        try:
-            doc = SimpleDocTemplate(output_path, pagesize = letter)
-    
-            # Define base and custom styles
-            styles = getSampleStyleSheet()
-            custom_styles = {
-                "h1": ParagraphStyle("Heading1", parent = styles["Heading1"], fontSize = 16, spaceAfter = 10),
-                "h2": ParagraphStyle("Heading2", parent = styles["Heading2"], fontSize = 14, spaceAfter = 8),
-                "h3": ParagraphStyle("Heading3", parent = styles["Heading3"], fontSize = 12, spaceAfter = 6),
-                "h4": ParagraphStyle("Heading4", parent = styles["Heading4"], fontSize = 11, spaceAfter = 5),
-                "h5": ParagraphStyle("Heading5", parent = styles["Normal"], fontSize = 10,
-                                     spaceAfter = 4, fontName = "Helvetica-Bold"),
-                "p": styles["Normal"],
-                "ul": styles["Normal"],
-                "code": ParagraphStyle("Code", fontName = "Courier", fontSize = 7.5,
-                                       leading = 9, spaceAfter = 6, leftIndent = 6, rightIndent = 6)
-            }
-    
-            elements = []
-    
-            # --- Disclaimer ---
-            disclaimer_text = (
-                "This model and explanation were generated by ModelBot, an agent designed to help non-technical "
-                "users perform basic machine learning modeling, powered by Llama 3. It is not "
-                "a replacement for a human data scientist, and there may be discrepancies and "
-                "inaccuracies within this report."
-            )
-            disclaimer_style = ParagraphStyle("Disclaimer", parent = styles["Normal"],
-                                              fontSize = 8, textColor = "gray", spaceAfter = 2)
-            elements.append(Paragraph(disclaimer_text, disclaimer_style))
-            elements.append(Spacer(1, 12))
-    
-            # --- ANOVA Table (from markdown string) ---
-            anova_preformatted = Preformatted(anova_table, style = custom_styles["code"])
-            elements.append(anova_preformatted)
-            elements.append(Spacer(1, 12))
-        
-            # --- Residual Plot ---
-            residual_section = KeepTogether([
-                self.figure_to_reportlab_image(residual_plot),
-                Spacer(1, 12)
-            ])
-            elements.append(residual_section)
-    
-            # --- Judge Evaluation ---
-            html = markdown.markdown(judge_eval, extensions = ["tables"])
-            soup = BeautifulSoup(html, 'html.parser')
-    
-            for tag in soup:
-                if tag.name in ["h1", "h2", "h3", "h4", "h5"]:
-                    elements.append(Paragraph(tag.get_text(), custom_styles[tag.name]))
-                    elements.append(Spacer(1, 6))
-                elif tag.name == "p":
-                    elements.append(Paragraph(tag.get_text(), custom_styles["p"]))
-                    elements.append(Spacer(1, 6))
-                elif tag.name == "ul":
-                    bullets = [
-                        ListItem(Paragraph(li.get_text(), custom_styles["ul"]))
-                        for li in tag.find_all("li")
-                    ]
-                    elements.append(ListFlowable(bullets, bulletType='bullet'))
-                    elements.append(Spacer(1, 6))
-                elif tag.name == "table":
-                    rows = []
-                    for row in tag.find_all("tr"):
-                        cells = [cell.get_text(strip = True) for cell in row.find_all(["th", "td"])]
-                        rows.append(cells)
-    
-                    table = Table(rows, hAlign='LEFT')
-                    table.setStyle(TableStyle([
-                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                    ]))
-                    elements.append(table)
-                    elements.append(Spacer(1, 12))
-    
-            # --- Build PDF ---
-            doc.build(elements)
-            return True
-    
-        except Exception as e:
-            print("Error saving regression report:", e)
-            traceback.print_exc()
-            return False

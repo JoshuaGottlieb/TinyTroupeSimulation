@@ -1,5 +1,10 @@
+# Absolute imports
 import os
+
+# Third-party imports
 from together import Together
+
+# Typing imports
 from typing import Any
 
 class LlamaBot:
