@@ -6,8 +6,8 @@ import re
 from collections.abc import Callable
 
 # Local imports
-from .chatbot import *
 from .dataholder import *
+from .llm import *
 
 # Typing imports
 from typing import Dict, Any, List

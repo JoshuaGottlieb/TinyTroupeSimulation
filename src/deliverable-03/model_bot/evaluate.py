@@ -12,8 +12,8 @@ from sklearn.preprocessing import LabelBinarizer
 import shap
 
 # Local imports
-from .chatbot import LlamaBot
 from .dataholder import DataHolder
+from .llm import LlamaBot
 
 # Typing imports
 from typing import Tuple, List

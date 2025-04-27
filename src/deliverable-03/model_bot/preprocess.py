@@ -4,8 +4,8 @@ import pandas as pd
 from difflib import SequenceMatcher
 
 # Local imports
-from .chatbot import *
 from .dataholder import *
+from .llm import *
 
 # Scikit-learn imports
 from sklearn.model_selection import train_test_split

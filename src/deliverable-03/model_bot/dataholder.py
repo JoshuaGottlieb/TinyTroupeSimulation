@@ -6,7 +6,7 @@ import pandas as pd
 from pandas.api.types import is_numeric_dtype
 
 # Local imports
-from .chatbot import LlamaBot
+from .llm import LlamaBot
 
 # Typing imports
 from typing import Any, Dict, Union, List, Tuple

@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 
 # Local imports
-from .chatbot import *
 from .dataholder import *
+from .llm import *
 
 # Scikit-learn imports
 from sklearn.compose import ColumnTransformer

@@ -41,6 +41,27 @@ def serialize_model(model: Any) -> str:
 
     return b64_model
 
+def deserialize_model(b64_model: str) -> Any:
+    """
+    Decodes and unpickles a base64-encoded machine learning model.
+
+    Args:
+        b64_model (str): A base64-encoded string representing a pickled model object.
+
+    Returns:
+        Any: The deserialized model object.
+
+    Raises:
+        ValueError: If decoding or unpickling fails.
+    """
+    try:
+        # Decode the base64 string and unpickle the model
+        pickled_model = base64.b64decode(b64_model.encode('utf-8'))
+        model = pickle.loads(pickled_model)
+        return model
+    except Exception as e:
+        raise ValueError(f"Failed to deserialize model: {e}")
+
 def safe_serialize(obj: Any) -> Any:
     """
     Recursively serializes common data structures into JSON-safe formats.
