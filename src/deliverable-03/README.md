@@ -6,8 +6,6 @@ ModelBot is an Agentic helper designed to perform regression and classification 
 
 The current version of ModelBot is limited in scope. A limited amount of preprocessing is performed on the dataset before modeling. Currently, the only models used for regression are Linear Regression, Polynomial (Degree 3) Regression using Lasso regularization, and ElasticNet Regression, and the only models used for classification are Logistic Regression, Decision Tree Classifiers, and Random Forest Classifiers. A small hyperparameter grid can be searched, if requested by the user, to perform limited model tuning; however, the grid is deliberately small to reduce fitting time. The expected performance of ModelBot is significantly lower than that of a human data scientist, as the preprocessing and modeling steps are relatively simplistic.
 
-
-
 ## Requirements
 
 The libraries and version of Python used to create this project are listed below. The requirements are also available at [requirements.txt](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/requirements.txt).
@@ -34,7 +32,7 @@ together==1.5.5
 uvicorn==0.34.2
 ```
 
-The project is designed to be used with FastAPI using the Uvicorn package to set up a localhost server. ModelBot is powered by [Together.ai](https://api.together.ai/) and thus requires a Together API key. The current configuration expects the Together API key to be part of the environment variables, so before execution, the following command needs to be executed in the terminal window used to launch Jupyter Notebooks and again in the window used to launch the FastAPI session:
+The project is designed to be used with FastAPI using the Uvicorn package to set up a localhost server. ModelBot is powered by [Together.ai](https://api.together.ai/) and thus requires a Together API key. ModelBot is intended to be interacted with through the [ModelBot Chat Jupyter Notebook](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/ModelBot-Chat.ipynb). The current configuration expects the Together API key to be part of the environment variables, so before execution, the following command needs to be executed in the terminal window used to launch Jupyter Notebooks and again in the window used to launch the FastAPI session:
 
 ```
 export TOGETHER_API_KEY="YOUR_API_KEY"
