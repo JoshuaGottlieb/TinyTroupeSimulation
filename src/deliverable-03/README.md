@@ -6,6 +6,57 @@ ModelBot is an Agentic helper designed to perform regression and classification 
 
 The current version of ModelBot is limited in scope. A limited amount of preprocessing is performed on the dataset before modeling. Currently, the only models used for regression are Linear Regression, Polynomial (Degree 3) Regression using Lasso regularization, and ElasticNet Regression, and the only models used for classification are Logistic Regression, Decision Tree Classifiers, and Random Forest Classifiers. A small hyperparameter grid can be searched, if requested by the user, to perform limited model tuning; however, the grid is deliberately small to reduce fitting time. The expected performance of ModelBot is significantly lower than that of a human data scientist, as the preprocessing and modeling steps are relatively simplistic.
 
+
+
+## Requirements
+
+The libraries and version of Python used to create this project are listed below. The requirements are also available at [requirements.txt](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/requirements.txt).
+
+```
+Python==3.12.3
+
+beautifulsoup4==4.13.4
+fastapi==0.115.12
+ipython==8.20.0
+Markdown==3.5.2
+matplotlib==3.6.3
+numpy==2.2.5
+pandas==2.2.3
+Pillow==11.2.1
+pydantic==2.11.3
+reportlab==4.3.1
+Requests==2.32.3
+scikit_learn==1.6.1
+scipy==1.15.2
+seaborn==0.13.2
+shap==0.47.1
+together==1.5.5
+uvicorn==0.34.2
+```
+
+The project is designed to be used with FastAPI using the Uvicorn package to set up a localhost server. ModelBot is powered by [Together.ai](https://api.together.ai/) and thus requires a Together API key. The current configuration expects the Together API key to be part of the environment variables, so before execution, the following command needs to be executed in the terminal window used to launch Jupyter Notebooks and again in the window used to launch the FastAPI session:
+
+```
+export TOGETHER_API_KEY="YOUR_API_KEY"
+```
+
+For the Jupyter Noteobook, an alternative is to add the following snippet to the notebook:
+```
+import os
+
+os.environ["TOGETHER_API_KEY"] = "YOUR_API_KEY"
+```
+
+To set up the FastAPI server on localhost, at the root directory, execute the following command in terminal. It is necessary to execute the command from the root directory in order for relative imports to function properly:
+
+```
+
+uvicorn model_bot.api:app --reload
+
+```
+
+Reminder: The Together API key must be exported in both terminals (one for setting up the FastAPI server and one for loading the Jupyter Notebook) or must otherwise be added to your permanent bashrc.
+
 ## Basic Workflow / User Journey Description
 
 The ModelBot is designed to be used by users with little to no Data Science knowledge. The user can request descriptions of the possible API functions, their trigger words, and their requirements by entering "list functions".
@@ -19,74 +70,38 @@ The ModelBot is designed to be used by users with little to no Data Science know
 - Once all of the prerequisites and input data are present in the DataHolder, the [API function](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/modules/api_list.py) is invoked. Any data that needs to be saved is added to the DataHolder object for future API calls. Status messages are displayed back to the user in the event stream, and the function returns a response dictionary denoting success or failure of the API call. If the API call failed, user input gathered for the API function call is removed from the DataHolder so that the user can retry later.
 - The success status of the API call is displayed to the user, and the chat continues.
 
-An example successful classification workflow (at any point, if a step fails, it exits gracefully and restarts the conversation loop):
-- Chat instantiated, DataHolder initialized
-- User sends "classification report"
-- Message is parsed and triggers the [classification_report()](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/modules/api_list.py) function. (START API 1)
-- The metadata is checked and it is found that the DataHolder needs "scores" and "predictions" dictionaries.
-- The DataHolder is checked and does not contain this data. The user is notified that the model has not yet been fit.
-- The metadata is referenced and the prerequisite API call is the [perform_classification()](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/modules/api_list.py) function. A sub-API call begins. (START API 2)
-- The metadata is checked and it is found that the DataHolder needs an "X" dataframe and "y" series.
-- The DataHolder is checked and does not contain this data. The user is notified that the data has not yet been loaded.
-- The metadata is checked and it is found that the prerequisite API call is the [load_csv_and_select_target()](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/modules/api_list.py) function. Another sub-API call begins. (START API 3)
-- The metadata is checked and there is no prerequsite data. The metadata is checked again and it is found that the "csv_path" parameter is needed from the user.
-- The DataHolder is checked and does not contain this data, so the user is prompted for the "csv_path". The user enters the csv path which is added to the DataHolder.
-- All requirements for API 3 are satisfied, so load_csv_and_select_target() is invoked and runs to completion. "X" dataframe and "y" series are added to the DataHolder as part of resolving API 3. (END API 3)
-- The prerequisites are satisfied for API 2, so the metadata is checked again and it is found that the "cleaning_strictness", "hyperparameter_tuning", and "extended_models" parameters are needed from the user.
-- The DataHolder is checked and does not contain this data, so the user is prompted for the "cleaning_strictness", "hyperparameter_tuning", and "extended_models" parameters. The user enters this data which is added to the DataHolder.
-- All requirements for API 2 are satisfied, so perform_classification() is invoked and runs to completion. "scores" and "predictions" dictionaries are added to the DataHolder as part of resolving API 2 (END API 2)
-- The prerequisites are satisfied for API 1, so the metadata is checked again and it is found that the "save_pdf" and "save_path" parameters are needed from the user.
-- The DataHolder is checked and does not contain this data, so the user is prompted for the "save_pdf" and "save_path" parameters. The user enters this data which is added to the DataHolder.
-- All requirements for API 1 are satisfied, so classification_report() is invoked and runs to completion. Nothing is added to the DataHolder as a part of this function. (END API 1)
-- The user is alerted to the success of their API request, and the conversation loop restarts.
-
-The user can invoke each API individually in order, if they wish, but the ModelBot is designed such that it can recursively invoke API calls as needed.
-
-## Requirements
-
-The libraries and version of Python used to create this project are listed below. The requirements are also available at [requirements.txt](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/requirements.txt).
-```
-Python==3.12.3
-
-beautifulsoup4==4.13.4
-ipython==8.20.0
-Markdown==3.5.2
-matplotlib==3.6.3
-numpy==2.2.4
-pandas==2.2.3
-Pillow==11.2.1
-reportlab==4.3.1
-scikit_learn==1.6.1
-scipy==1.15.2
-seaborn==0.13.2
-shap==0.47.1
-statsmodels==0.14.4
-together==1.5.5
-```
+A more detailed description of the system design and user journey is available at the [ModelBot System Design document](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/system_design/ModelBot-System-Design-and-User-Journey.pdf).
 
 ## Repository Structure
 
 ```
-├── Automatic-Machine-Learner.ipynb        # Notebook for testing and for programmatically creating metadata json
-├── classification_report_example.pdf      # Example classification report pdf generated by ModelBot
-├── classification_test.csv                # Data to use for testing classification tasks
-├── regression_test.csv                    # Data to use for testing regression tasks
+├── example_reports                                 # Example reports to showcase the capabilities of ModelBot
+│   ├── classification_report_example.pdf
+│   └── regression_report_example.pdf
+├── model_bot                                       # Code used to power ModelBot
+│   ├── api.py                                      # App script containing functions that are implemented via FastAPI to create reports
+│   ├── dataholder.py                               # Class that defines the DataHolder object used to hold saved data during chats
+│   ├── evaluate.py                                 # Class that performs model evaluation tasks
+│   ├── functions.py                                # Script containing functions callable by the user during chat
+│   ├── helper.py                                   # Script for metadata loading, intent processing, and dependency resolution for function calls
+│   ├── llm.py                                      # LlamaBot class that connects to Together API to acces Llama 3-8b
+│   ├── metadata                                    # Metadata used for defining user-callable functions
+│   │   ├── Metadata-Creation.ipynb                 # Notebook for programmatically defining metadata
+│   │   └── metadata.json                           # JSON file containing function metadata
+│   ├── model.py                                    # Class that performs model fitting tasks
+│   ├── preprocess.py                               # Class that performs data preprocessing tasks
+│   ├── serialize.py                                # Script containing functions for serialization and deserialization of data for use in HTTP requests
+│   └── user_interface.py                           # ModelBot class which is the main interface with he user
+├── ModelBot-Chat.ipynb                             # Jupyter Notebook to use for running ModelBot
 ├── README.md
-├── modules                                # Code used for for ModelBot
-│   ├── api_list.py                        # List of API functions that can be invoked by the user
-│   ├── chatbot.py                         # LlamaBot class that connects to Together API to access Llama 3-8b
-│   ├── dataholder.py                      # Class that defines a DataHolder which holds and tracks saved parameters and other data
-│   ├── evaluate.py                        # Class that performs model evaluation tasks
-│   ├── helper.py                          # Helper functions for ModelBot, including metadata loading, intent parsing, and API invocation
-│   ├── interface.py                       # ModelBot class which is the main interface between the user and the API functions
-│   ├── metadata.json                      # JSON file containing invocable API function metadata
-│   ├── model.py                           # Class that performs model fitting and scoring tasks
-|   └── preprocess.py                      # Class that performs data preprocessing tasks
+├── requirements.txt
+├── sample_data                                     # Sample data to use for testing ModelBot
+│   ├── classification_test.csv
+│   └── regression_test.csv
+└── system_design                                   # System design and user journey documentation
+    └── ModelBot-System-Design-and-User-Journey.pdf
+
 ```
 
-## To Do
-- Clean up this repository, including expanding the README, renaming directories for clarity, and possible restructuring of repository
-- Create a user journey flowchart and system design chart
-- Reformat the front-end to utilize Streamlit rather than using print statements
-- Standup using FastAPI, including handling serialization of custom Python objects
-- Clean up the code, as needed
+## Future Enhancements
+- Reformat the front-end to utilize Streamlit or some other fancier front-end rather than utilzing print statements in Jupyter Notebooks
