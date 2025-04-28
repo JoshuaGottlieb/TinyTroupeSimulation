@@ -45,7 +45,7 @@ import os
 os.environ["TOGETHER_API_KEY"] = "YOUR_API_KEY"
 ```
 
-To set up the FastAPI server on localhost, at the root directory, execute the following command in terminal. It is necessary to execute the command from the root directory in order for relative imports to function properly:
+To set up the FastAPI server on localhost, at the project's root directory, execute the following command in a terminal. It is necessary to execute the command from the project's root directory in order for relative imports to function properly:
 
 ```
 
@@ -60,7 +60,7 @@ Reminder: The Together API key must be exported in both terminals (one for setti
 The ModelBot is designed to be used by users with little to no Data Science knowledge. The user can request descriptions of the possible API functions, their trigger words, and their requirements by entering "list functions".
 
 - A chat is instantiated from a fresh [ModelBot](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/modules/interface.py), creating a fresh [DataHolder object](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/modules/dataholder.py) and loading the API function metadata from [metadata.json](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/modules/metadata.json)
-- User interacts with the chatbot, sending messages.
+- The user interacts with the chatbot, sending messages.
 - The messages are parsed and checked for trigger words to see if any APIs are being requested by the user using detect_api_call() in [helper.py](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/modules/helper.py)
 - If no API calls are detected, the chatbot responds to the user. Otherwise, the API call is processed using process_api_call() in [helper.py](https://github.com/JoshuaGottlieb/TinyTroupeSimulation/blob/main/src/deliverable-03/modules/helper.py)
 - process_api_call() first checks the metadata to see what prerequisite data must be present in the DataHolder. If there is prerequisite data that is needed and that data is not in the DataHolder, process_api_call() is recursively called until an API call is successfully initiated or otherwise fails gracefully.
