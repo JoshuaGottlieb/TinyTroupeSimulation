@@ -4,7 +4,7 @@ import pandas as pd
 from difflib import SequenceMatcher
 
 # Local imports
-from .dataholder import *
+from .dataholder import * 
 from .llm import *
 
 # Scikit-learn imports
@@ -359,15 +359,29 @@ class DataFramePreprocessor:
     
         return
 
-
     def preprocess(self) -> bool:
+        """
+        Executes the full preprocessing pipeline, including train-test splitting,
+        data cleaning, and feature standardization/encoding.
+    
+        Returns:
+            bool: True if preprocessing completes successfully; False if any step raises an exception.
+        """
         try:
+            # Step 1: Split the data into training and test sets
             self.train_test_split()
-            self.clean_data(strictness = self.dataholder.cleaning_strictness)
+    
+            # Step 2: Clean the data using the configured strictness level
+            self.clean_data(strictness=self.dataholder.cleaning_strictness)
+    
+            # Step 3: Standardize numeric features and encode categorical ones
             self.standardize_and_encode()
+    
+            # All steps completed successfully
             return True
         except Exception as e:
-            print (e)
+            # Print the error and return False to indicate failure
+            print(e)
             return False
 
     
