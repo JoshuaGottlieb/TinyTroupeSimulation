@@ -372,7 +372,7 @@ class DataFramePreprocessor:
             self.train_test_split()
     
             # Step 2: Clean the data using the configured strictness level
-            self.clean_data(strictness=self.dataholder.cleaning_strictness)
+            self.clean_data(strictness = self.dataholder.cleaning_strictness)
     
             # Step 3: Standardize numeric features and encode categorical ones
             self.standardize_and_encode()
@@ -383,5 +383,3 @@ class DataFramePreprocessor:
             # Print the error and return False to indicate failure
             print(e)
             return False
-
-    
