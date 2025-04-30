@@ -19,9 +19,10 @@ ipython==8.20.0
 Markdown==3.5.2
 matplotlib==3.6.3
 numpy==2.2.5
+opencv-python-headless==4.11.0.86
 pandas==2.2.3
 Pillow==11.2.1
-pydantic==2.11.3
+pydantic==2.11.4
 reportlab==4.3.1
 Requests==2.32.3
 scikit_learn==1.6.1
